@@ -66,15 +66,18 @@ func ValidateCreateOrder(items []OrderItemInput) error {
 func CanCancel(status string) bool { return status == "PENDING" || status == "CONFIRMED" }
 
 // ValidTransition encodes allowed order status transitions.
+// It is the single source of truth; terminal states (DELIVERED,
+// CANCELLED, PAYMENT_FAILED) have no outgoing transitions.
 func ValidTransition(from, to string) bool {
-	if from == to {
-		return true
-	}
 	switch from {
 	case "PENDING":
 		return to == "CONFIRMED" || to == "CANCELLED" || to == "PAYMENT_FAILED"
 	case "CONFIRMED":
-		return to == "CANCELLED"
+		return to == "PROCESSING" || to == "CANCELLED"
+	case "PROCESSING":
+		return to == "SHIPPED" || to == "CANCELLED"
+	case "SHIPPED":
+		return to == "DELIVERED"
 	default:
 		return false
 	}

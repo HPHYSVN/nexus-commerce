@@ -7,6 +7,15 @@ export interface Cart { userId: string; items: CartItem[]; subtotal: number }
 export interface OrderItem { productId: string; productName: string; unitPrice: number; quantity: number }
 export interface Order { id: string; userId: string; status: string; totalAmount: number; items: OrderItem[]; createdAt: string }
 export interface AppNotification { id: string; eventType: string; message: string; status: string; createdAt: string }
+export interface AdminStats { totalOrders: number; totalRevenue: number; ordersByStatus: Record<string, number>; revenueByDay: Array<{ date: string; revenue: number; orders: number }> }
+
+export function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
+  const esc = (v: string | number) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const blob = new Blob([rows.map((r) => r.map(esc).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
 
@@ -76,6 +85,9 @@ export const api = {
   order: (id: string) => request<Order>(`/api/orders/${id}`),
   cancelOrder: (id: string) => request<Order>(`/api/orders/${id}/cancel`, j('POST', {})),
   notifications: () => request<AppNotification[]>('/api/notifications?limit=50'),
+  adminOrders: (status = '') => request<Order[]>(`/api/admin/orders?size=100${status ? `&status=${status}` : ''}`),
+  adminStats: () => request<AdminStats>('/api/admin/stats'),
+  setOrderStatus: (id: string, status: string) => request<Order>(`/api/admin/orders/${id}/status`, j('PUT', { status })),
   getStock: (id: string) => request<any>(`/api/inventory/${id}`),
   setStock: (id: string, quantity: number) => request<any>(`/api/inventory/${id}`, j('PUT', { quantity })),
 };

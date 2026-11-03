@@ -1,9 +1,37 @@
 @import "tailwindcss";
 
-body { @apply bg-slate-50 text-slate-900 antialiased; }
-.input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900; }
-.btn { @apply inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50; }
-.btn-secondary { @apply inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-100 disabled:opacity-50; }
-.btn-danger { @apply inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:opacity-50; }
-.card { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
-.label { @apply mb-1 block text-sm font-medium text-slate-700; }
+@theme {
+  --font-sans: "Manrope", ui-sans-system, system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+  --color-paper: #faf8f5;
+  --color-ink: #16211d;
+  --color-inksoft: #43524c;
+  --color-pine: #0c5b4e;
+  --color-pinedark: #084239;
+  --color-mist: #e8efec;
+  --color-sand: #f0e9df;
+  --color-ochre: #b26f16;
+  --color-line: #ddd6cb;
+}
+
+body { @apply bg-paper text-ink font-sans antialiased; }
+::selection { background: #0c5b4e; color: #faf8f5; }
+
+.input { @apply w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-pine focus:ring-2 focus:ring-pine/25; }
+.btn { @apply inline-flex items-center justify-center rounded-lg bg-pine px-4 py-2 text-sm font-semibold text-white transition hover:bg-pinedark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine disabled:cursor-not-allowed disabled:opacity-50; }
+.btn-secondary { @apply inline-flex items-center justify-center rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:border-inksoft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine disabled:opacity-50; }
+.btn-danger { @apply inline-flex items-center justify-center rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 focus-visible:outline-2 disabled:opacity-50; }
+.card { @apply rounded-xl border border-line bg-white; box-shadow: 0 1px 2px rgb(22 33 29 / 0.05); }
+.label { @apply mb-1 block text-sm font-semibold text-ink; }
+.chip { @apply rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-inksoft transition hover:border-pine hover:text-pine; }
+.chip-active { @apply border-pine bg-pine text-white hover:text-white; }
+.table { @apply w-full text-left text-sm; }
+.table th { @apply border-b border-line px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-inksoft; }
+.table td { @apply border-b border-line/60 px-3 py-2.5 align-middle; }
+.skeleton { @apply animate-pulse rounded-lg bg-sand; }
+
+@media print {
+  body * { visibility: hidden; }
+  #report-print, #report-print * { visibility: visible; }
+  #report-print { position: absolute; inset: 0; padding: 24px; }
+}

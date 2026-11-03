@@ -116,6 +116,13 @@ func setupRouter(app *App) *gin.Engine {
 	g.GET("", app.ListOrders)
 	g.GET("/:id", app.GetOrder)
 	g.POST("/:id/cancel", app.CancelOrder)
+	// Admin routes use a separate top-level group to avoid Gin param
+	// conflicts with /orders/:id. requireAdmin runs after requireAuth
+	// and before any handler, so non-admins get 403 even without a DB.
+	admin := r.Group("/admin", app.requireAuth, app.requireAdmin)
+	admin.GET("/orders", app.AdminListOrders)
+	admin.GET("/stats", app.AdminStats)
+	admin.PUT("/orders/:id/status", app.AdminUpdateOrderStatus)
 	return r
 }
 

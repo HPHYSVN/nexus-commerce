@@ -5,8 +5,11 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestCalculateTotal(t *testing.T) {
@@ -94,6 +97,90 @@ func TestResolveIdempotencyKeyAndValidInternalToken(t *testing.T) {
 	}
 	if !validInternalToken("s3cret", "s3cret") || validInternalToken("wrong", "s3cret") || validInternalToken("s3cret", "") {
 		t.Fatal("validInternalToken mismatch")
+	}
+}
+
+func TestValidTransitionTable(t *testing.T) {
+	cases := []struct {
+		from, to string
+		want     bool
+	}{
+		{"PENDING", "CONFIRMED", true},
+		{"PENDING", "CANCELLED", true},
+		{"PENDING", "PAYMENT_FAILED", true},
+		{"CONFIRMED", "PROCESSING", true},
+		{"CONFIRMED", "CANCELLED", true},
+		{"PROCESSING", "SHIPPED", true},
+		{"PROCESSING", "CANCELLED", true},
+		{"SHIPPED", "DELIVERED", true},
+		{"SHIPPED", "CANCELLED", false},
+		{"SHIPPED", "PROCESSING", false},
+		{"DELIVERED", "CANCELLED", false},
+		{"DELIVERED", "DELIVERED", false},
+		{"DELIVERED", "SHIPPED", false},
+		{"PENDING", "SHIPPED", false},
+		{"PENDING", "PROCESSING", false},
+		{"PENDING", "DELIVERED", false},
+		{"CONFIRMED", "SHIPPED", false},
+		{"CONFIRMED", "DELIVERED", false},
+		{"PROCESSING", "DELIVERED", false},
+		{"PROCESSING", "CONFIRMED", false},
+		{"CANCELLED", "CONFIRMED", false},
+		{"PAYMENT_FAILED", "CONFIRMED", false},
+		{"", "CONFIRMED", false},
+	}
+	for _, tc := range cases {
+		if got := ValidTransition(tc.from, tc.to); got != tc.want {
+			t.Errorf("ValidTransition(%q,%q)=%v want %v", tc.from, tc.to, got, tc.want)
+		}
+	}
+	// Admin-allowed subset: PENDING transitions exist in ValidTransition
+	// but must not be admin-triggerable.
+	if adminTransitionAllowed("PENDING", "CANCELLED") || adminTransitionAllowed("PENDING", "CONFIRMED") {
+		t.Error("admin must not trigger PENDING transitions")
+	}
+	if !adminTransitionAllowed("CONFIRMED", "PROCESSING") || !adminTransitionAllowed("PROCESSING", "CANCELLED") {
+		t.Error("admin transitions rejected")
+	}
+}
+
+func TestAdminAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	secret := "test-secret-at-least-32-chars-long!!"
+	app := &App{JWTSecret: secret} // DB nil: auth must run before DB-nil 500
+	r := setupRouter(app)
+	mint := func(role string) string {
+		return SignJWT(Claims{Sub: "u1", Role: role, Exp: time.Now().Add(time.Hour).Unix()}, secret)
+	}
+	routes := []struct{ method, path string }{
+		{http.MethodGet, "/admin/stats"},
+		{http.MethodGet, "/admin/orders"},
+		{http.MethodPut, "/admin/orders/o1/status"},
+	}
+	for _, rt := range routes {
+		// No token -> 401
+		req := httptest.NewRequest(rt.method, rt.path, strings.NewReader(`{"status":"PROCESSING"}`))
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s no token: got %d want 401", rt.method, rt.path, w.Code)
+		}
+		// Customer -> 403 (testable without DB: admin check precedes DB check)
+		req = httptest.NewRequest(rt.method, rt.path, strings.NewReader(`{"status":"PROCESSING"}`))
+		req.Header.Set("Authorization", "Bearer "+mint("USER"))
+		w = httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusForbidden {
+			t.Errorf("%s %s customer: got %d want 403", rt.method, rt.path, w.Code)
+		}
+	}
+	// Admin passes auth, then hits DB-nil 500 (proves admin check passed).
+	req := httptest.NewRequest(http.MethodGet, "/admin/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+mint("ADMIN"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("admin /admin/stats with nil DB: got %d want 500", w.Code)
 	}
 }
 

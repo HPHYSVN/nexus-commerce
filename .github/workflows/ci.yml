@@ -77,5 +77,48 @@ jobs:
           done
           curl -sf http://localhost:3000/api/products
           curl -sf http://localhost:5173/ > /dev/null
+      - name: System test suites (e2e, security, attack, concurrency, flash-sale, load)
+        run: |
+          set -a; source .env; set +a
+          sleep 20
+          bash tests/e2e.sh
+          bash tests/security.sh
+          bash tests/attack.sh
+          bash tests/concurrency.sh
+          bash tests/flash-sale.sh
+          bash tests/load.sh
       - if: always()
         run: docker compose down -v
+
+  deploy:
+    # CD to the Fly.io Sprite. Requires repo secret SPRITE_TOKEN
+    # (format: org-slug/org-id/token-id/token-value — create an API token in
+    # the Fly.io Sprites dashboard, then `gh secret set SPRITE_TOKEN`).
+    # Without the secret the job passes with a notice instead of failing.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [python-services, go-services, identity, api-gateway, frontend, docker]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check deploy credentials
+        id: creds
+        run: |
+          if [ -z "${{ secrets.SPRITE_TOKEN }}" ]; then
+            echo "::notice::SPRITE_TOKEN secret not set — skipping deploy. Create a Sprites API token and add it to enable CD."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.creds.outputs.ready == 'true'
+        run: curl -fsSL https://sprites.dev/install.sh | sh
+      - if: steps.creds.outputs.ready == 'true'
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          sprite auth setup --token "${{ secrets.SPRITE_TOKEN }}"
+          sprite exec -s my-first-sprite --no-stdin -- bash -c 'cd ~/nexus-commerce && git pull -q && bash deploy/sprite/deploy.sh'
+      - if: steps.creds.outputs.ready == 'true'
+        run: |
+          sleep 10
+          curl -sf https://my-first-sprite-b5urg.sprites.app/api/products > /dev/null
+          curl -sf https://my-first-sprite-b5urg.sprites.app/ > /dev/null
+          echo "Deployed and live."

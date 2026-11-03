@@ -50,9 +50,10 @@ sudo rabbitmqctl set_user_tags "$RABBITMQ_USER" administrator || true
 sudo rabbitmqctl set_permissions -p / "$RABBITMQ_USER" ".*" ".*" ".*" || true
 
 echo "== builds =="
-[ -f services/identity/target/identity-0.1.0.jar ] || (cd services/identity && mvn -q -DskipTests package)
+# Always rebuild artifacts — build-only-if-missing silently ships stale code.
+(cd services/identity && mvn -q -DskipTests package)
 for s in inventory payment order; do
-  [ -f "$BIN/$s" ] || (cd "services/$s" && go build -o "$BIN/$s" .)
+  (cd "services/$s" && go build -o "$BIN/$s" .)
 done
 [ -d "$HOME/nexus-venv" ] || python3 -m venv "$HOME/nexus-venv"
 "$HOME/nexus-venv/bin/pip" install -q -r services/product/requirements.txt -r services/cart/requirements.txt -r services/notification/requirements.txt

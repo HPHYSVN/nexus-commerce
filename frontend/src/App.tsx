@@ -23,9 +23,13 @@ function Header() {
   const cart = useQuery({ queryKey: ['cart'], queryFn: api.cart, enabled: !!user });
   const count = cart.data?.items.reduce((a, i) => a + i.quantity, 0) ?? 0;
   return (
-    <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <nav className="mx-auto flex max-w-6xl items-center gap-5 px-5 py-3">
-        <Link to="/" className="text-lg font-bold">Nexus Commerce</Link>
+    <>
+    <div className="bg-pine text-center text-xs font-semibold tracking-wide text-white">
+      <p className="mx-auto max-w-6xl px-5 py-1.5">Free shipping over $75 · 30-day returns · Secure checkout</p>
+    </div>
+    <header className="sticky top-0 z-10 border-b border-line bg-paper/95 backdrop-blur">
+      <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3">
+        <Link to="/" className="font-display text-2xl font-semibold tracking-tight">Nexus<span className="text-pine">.</span></Link>
         <Link to="/" className="text-sm hover:underline">Products</Link>
         {user && <Link to="/cart" className="text-sm hover:underline">Cart{count > 0 ? ` (${count})` : ''}</Link>}
         {user && <Link to="/orders" className="text-sm hover:underline">Orders</Link>}
@@ -41,6 +45,7 @@ function Header() {
         </div>
       </nav>
     </header>
+    </>
   );
 }
 
@@ -77,7 +82,16 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-      <footer className="border-t border-slate-200 py-6 text-center text-xs text-slate-500">Nexus Commerce — microservices demo (mock payments only)</footer>
+      <footer className="border-t border-line py-8">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-start justify-between gap-6 px-5">
+          <div><p className="font-display text-lg font-semibold">Nexus.</p><p className="mt-1 max-w-xs text-xs leading-relaxed text-inksoft">A working microservices storefront. Payments are simulated for demonstration.</p></div>
+          <div className="flex gap-10 text-sm">
+            <div className="space-y-1.5"><p className="font-bold">Shop</p><Link to="/" className="block text-inksoft hover:text-pine">All products</Link><Link to="/cart" className="block text-inksoft hover:text-pine">Cart</Link></div>
+            <div className="space-y-1.5"><p className="font-bold">Account</p><Link to="/orders" className="block text-inksoft hover:text-pine">Orders</Link><Link to="/profile" className="block text-inksoft hover:text-pine">Profile</Link></div>
+            <div className="space-y-1.5"><p className="font-bold">Support</p><span className="block text-inksoft">Shipping & returns</span><span className="block text-inksoft">Contact us</span></div>
+          </div>
+        </div>
+      </footer>
       <Toasts />
     </div>
   );
