@@ -1,0 +1,53 @@
+# Sprite (Fly.io) override.
+# The Sprite sandbox blocks setns(2), so `docker exec` — and therefore every
+# exec-based container healthcheck — fails with "Permission denied", even
+# though containers themselves run and network fine. Without this override all
+# services report "unhealthy" and `depends_on: service_healthy` deadlocks.
+# Here we disable healthchecks and depend on service start order + restart
+# policies + each service's own DB-connection retries instead.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.sprite.yml up -d --build
+services:
+  postgres:
+    healthcheck: { disable: true }
+  redis:
+    healthcheck: { disable: true }
+  rabbitmq:
+    healthcheck: { disable: true }
+  identity:
+    healthcheck: { disable: true }
+    depends_on:
+      postgres: { condition: service_started }
+  product:
+    healthcheck: { disable: true }
+    depends_on:
+      postgres: { condition: service_started }
+  cart:
+    healthcheck: { disable: true }
+    depends_on:
+      redis: { condition: service_started }
+  notification:
+    healthcheck: { disable: true }
+    depends_on:
+      postgres: { condition: service_started }
+      rabbitmq: { condition: service_started }
+  inventory:
+    healthcheck: { disable: true }
+    depends_on:
+      postgres: { condition: service_started }
+  payment:
+    healthcheck: { disable: true }
+    depends_on:
+      postgres: { condition: service_started }
+  order:
+    healthcheck: { disable: true }
+    depends_on:
+      postgres: { condition: service_started }
+      inventory: { condition: service_started }
+      payment: { condition: service_started }
+      product: { condition: service_started }
+  api-gateway:
+    healthcheck: { disable: true }
+    depends_on:
+      product: { condition: service_started }
+  frontend:
+    healthcheck: { disable: true }
