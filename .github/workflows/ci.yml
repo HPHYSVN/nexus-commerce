@@ -7,7 +7,9 @@ jobs:
     strategy:
       matrix:
         service: [product, cart, notification]
-    defaults: { run: { working-directory: services/${{ matrix.service }} } }
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,7 +22,9 @@ jobs:
     strategy:
       matrix:
         service: [inventory, payment, order]
-    defaults: { run: { working-directory: services/${{ matrix.service }} } }
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
