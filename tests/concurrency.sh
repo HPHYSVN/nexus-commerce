@@ -1,7 +1,7 @@
 #!/bin/bash
 # Oversell test: stock=5, 10 parallel orders of qty 1 -> exactly 5 CONFIRMED, 5x 409, stock 0/reserved 0.
 set -u
-B=http://localhost:3000/api
+B=${BASE_URL:-http://localhost:3000/api}
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 

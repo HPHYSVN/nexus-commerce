@@ -1,7 +1,7 @@
 #!/bin/bash
 # Security checks against a running stack. Expects ADMIN_EMAIL/ADMIN_PASSWORD env (defaults match .env.example).
 set -u
-B=http://localhost:3000/api
+B=${BASE_URL:-http://localhost:3000/api}
 PASS=0; FAIL=0
 check() { # name expected actual
   if [ "$2" = "$3" ]; then echo "PASS: $1 ($3)"; PASS=$((PASS+1)); else echo "FAIL: $1 expected=$2 got=$3"; FAIL=$((FAIL+1)); fi

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Nexus Commerce E2E smoke: register->login->admin stock->cart->order success/fail->notification
 set -u
-B=http://localhost:3000/api
+B=${BASE_URL:-http://localhost:3000/api}
 JQ() { python3 -c "import sys,json;d=json.load(sys.stdin);print(eval(sys.argv[1]))" "$1"; }
 fail() { echo "FAIL: $1"; exit 1; }
 
