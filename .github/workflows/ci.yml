@@ -81,12 +81,14 @@ jobs:
         run: |
           set -a; source .env; set +a
           sleep 20
+          # security.sh ends with a rate-limit hammer that exhausts the auth
+          # quota for ~60s, so it must run LAST.
           bash tests/e2e.sh
-          bash tests/security.sh
           bash tests/attack.sh
           bash tests/concurrency.sh
           bash tests/flash-sale.sh
           bash tests/load.sh
+          bash tests/security.sh
       - if: always()
         run: docker compose down -v
 
