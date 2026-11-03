@@ -7,7 +7,8 @@ All client traffic goes through the Gateway (`/api/**`). Conventions: JSON, `Aut
 | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/auth/me` | Identity | public / user |
 | `GET /api/products`, `GET /api/products/{id}`, `POST/PUT/DELETE /api/products/**` | Product | public read, ADMIN write |
 | `GET/POST /api/cart`, `PUT/DELETE /api/cart/items/{productId}` | Cart | user |
-| `GET /api/inventory/{productId}`, `PUT /api/inventory/{productId}` | Inventory | ADMIN (internal reserve/release/confirm endpoints are service-to-service only, not exposed via Gateway) |
+| `GET /api/categories`, `POST /api/categories` | Product | public read, ADMIN write |
+| `GET /api/inventory/{productId}`, `PUT /api/inventory/{productId}` | Inventory | user read, ADMIN write (internal reserve/release/confirm/restock endpoints are service-to-service only, not exposed via Gateway) |
 | `POST /api/orders`, `GET /api/orders`, `GET /api/orders/{id}`, `POST /api/orders/{id}/cancel` | Order | user (own orders only) |
 | `POST /api/payments` | Payment | internal (Order → Payment); not a frontend route in MVP |
 | `GET /api/notifications` | Notification | user (own) / ADMIN |

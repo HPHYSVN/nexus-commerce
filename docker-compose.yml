@@ -50,12 +50,86 @@ services:
     networks: [nexus]
     # ports: ["15672:15672"]  # dev only: management UI
 
+  identity:
+    build: ./services/identity
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: identity_db
+      DB_USER: identity_user
+      DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev_pw}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@nexus.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [nexus]
+
   product:
     build: ./services/product
     environment:
       DATABASE_URL: postgresql+psycopg://product_user:${PRODUCT_DB_PASSWORD:-product_dev_pw}@postgres:5432/product_db
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
     depends_on:
       postgres: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [nexus]
+
+  cart:
+    build: ./services/cart
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+    depends_on:
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [nexus]
+
+  notification:
+    build: ./services/notification
+    environment:
+      DATABASE_URL: postgresql+psycopg://notification_user:${NOTIFICATION_DB_PASSWORD:-notification_dev_pw}@postgres:5432/notification_db
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nexus}:${RABBITMQ_PASSWORD:-nexus_dev_pw}@rabbitmq:5672/
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [nexus]
+
+  inventory:
+    build: ./services/inventory
+    environment:
+      DATABASE_URL: postgres://inventory_user:${INVENTORY_DB_PASSWORD:-inventory_dev_pw}@postgres:5432/inventory_db?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [nexus]
+
+  payment:
+    build: ./services/payment
+    environment:
+      DATABASE_URL: postgres://payment_user:${PAYMENT_DB_PASSWORD:-payment_dev_pw}@postgres:5432/payment_db?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [nexus]
+
+  order:
+    build: ./services/order
+    environment:
+      DATABASE_URL: postgres://order_user:${ORDER_DB_PASSWORD:-order_dev_pw}@postgres:5432/order_db?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      INVENTORY_URL: http://inventory:8082
+      PAYMENT_URL: http://payment:8084
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nexus}:${RABBITMQ_PASSWORD:-nexus_dev_pw}@rabbitmq:5672/
+    depends_on:
+      postgres: { condition: service_healthy }
+      inventory: { condition: service_healthy }
+      payment: { condition: service_healthy }
     restart: unless-stopped
     networks: [nexus]
 
@@ -63,7 +137,13 @@ services:
     build: ./services/api-gateway
     environment:
       PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      IDENTITY_SERVICE_URL: http://identity:8081
       PRODUCT_SERVICE_URL: http://product:8001
+      CART_SERVICE_URL: http://cart:8002
+      NOTIFICATION_SERVICE_URL: http://notification:8003
+      INVENTORY_SERVICE_URL: http://inventory:8082
+      ORDER_SERVICE_URL: http://order:8083
       CORS_ORIGIN: http://localhost:${FRONTEND_PORT:-5173}
     ports: ["${GATEWAY_PORT:-3000}:3000"]
     depends_on:
@@ -73,9 +153,7 @@ services:
 
   frontend:
     build: ./frontend
-    environment:
-      GATEWAY_URL: http://api-gateway:3000
-    ports: ["${FRONTEND_PORT:-5173}:5173"]
+    ports: ["${FRONTEND_PORT:-5173}:80"]
     depends_on: [api-gateway]
     restart: unless-stopped
     networks: [nexus]

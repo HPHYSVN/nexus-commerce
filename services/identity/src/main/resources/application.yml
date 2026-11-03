@@ -1,0 +1,32 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: identity
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:identity_db}
+    username: ${DB_USER:identity_user}
+    password: ${DB_PASSWORD:identity_dev_pw}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+
+app:
+  jwt:
+    # Dev-only default; always set JWT_SECRET (>=32 chars) in real environments.
+    secret: ${JWT_SECRET:dev-only-change-me-at-least-32-chars-long!!}
+    access-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:15}
+    refresh-ttl-days: ${JWT_REFRESH_TTL_DAYS:7}
+  admin:
+    email: ${ADMIN_EMAIL:admin@nexus.local}
+    password: ${ADMIN_PASSWORD:Admin123!}
+    full-name: ${ADMIN_FULL_NAME:Administrator}
+
+logging:
+  level:
+    com.nexus.identity: INFO

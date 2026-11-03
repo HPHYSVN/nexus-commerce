@@ -1,6 +1,6 @@
 # System Overview — Nexus Commerce
 
-Status: **APPROVED 2026-11-03** · Phase 1, Week 1 walking skeleton implemented & verified in Docker
+Status: **APPROVED 2026-11-03 · ALL PHASES IMPLEMENTED & VERIFIED 2026-11-03** — all 8 services + frontend run via Docker Compose; full E2E (`tests/e2e.sh`) passes on a fresh `docker compose down -v && up`: register → login → admin stock → cart → checkout success (stock deducted) → payment failure (stock released, `PAYMENT_FAILED`) → RabbitMQ notifications logged → refresh-token rotation (reuse rejected 401) → oversell rejected 409 → cancel CONFIRMED order restocks. Remaining stretch items: choreographed saga (ADR-0004), RS256/JWKS (ADR-0003), Prometheus/Elasticsearch, public cloud deployment.
 
 ## 1. Feasibility Verdict
 
