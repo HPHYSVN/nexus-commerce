@@ -1,0 +1,90 @@
+name: nexus-commerce
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nexus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexus_dev_pw}
+      PRODUCT_DB_PASSWORD: ${PRODUCT_DB_PASSWORD:-product_dev_pw}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev_pw}
+      INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_dev_pw}
+      ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:-order_dev_pw}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment_dev_pw}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_dev_pw}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nexus}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks: [nexus]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks: [nexus]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-nexus}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-nexus_dev_pw}
+    volumes: [rabbitmq_data:/var/lib/rabbitmq]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [nexus]
+    # ports: ["15672:15672"]  # dev only: management UI
+
+  product:
+    build: ./services/product
+    environment:
+      DATABASE_URL: postgresql+psycopg://product_user:${PRODUCT_DB_PASSWORD:-product_dev_pw}@postgres:5432/product_db
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [nexus]
+
+  api-gateway:
+    build: ./services/api-gateway
+    environment:
+      PORT: 3000
+      PRODUCT_SERVICE_URL: http://product:8001
+      CORS_ORIGIN: http://localhost:${FRONTEND_PORT:-5173}
+    ports: ["${GATEWAY_PORT:-3000}:3000"]
+    depends_on:
+      product: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [nexus]
+
+  frontend:
+    build: ./frontend
+    environment:
+      GATEWAY_URL: http://api-gateway:3000
+    ports: ["${FRONTEND_PORT:-5173}:5173"]
+    depends_on: [api-gateway]
+    restart: unless-stopped
+    networks: [nexus]
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  nexus:
+    driver: bridge

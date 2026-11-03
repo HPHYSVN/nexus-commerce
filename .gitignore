@@ -1,0 +1,13 @@
+.env
+*.local
+node_modules/
+dist/
+target/
+__pycache__/
+.venv/
+*.class
+.idea/
+.vscode/
+.DS_Store
+coverage/
+*.tsbuildinfo
