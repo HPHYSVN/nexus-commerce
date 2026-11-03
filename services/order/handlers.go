@@ -137,6 +137,24 @@ func (a *App) CreateOrder(c *gin.Context) {
 		writeError(c, 400, "VALIDATION_ERROR", err.Error())
 		return
 	}
+	// Authoritative pricing: never trust client-sent names/prices (ADR: price hardening).
+	// The catalog name/price replace whatever the client sent and become the snapshot.
+	if a.Product != nil && a.Product.BaseURL != "" {
+		for i, it := range body.Items {
+			name, price, err := a.Product.Lookup(it.ProductID)
+			if errors.Is(err, ErrProductNotFound) {
+				writeError(c, 400, "PRODUCT_NOT_FOUND", "product not found: "+it.ProductID)
+				return
+			}
+			if err != nil {
+				log.Printf("product lookup failed for %s: %v", it.ProductID, err)
+				writeError(c, 502, "PRODUCT_UNAVAILABLE", "product catalog unavailable")
+				return
+			}
+			body.Items[i].ProductName = name
+			body.Items[i].UnitPrice = price
+		}
+	}
 	total := CalculateTotal(body.Items)
 	o := Order{ID: newID(), UserID: userID, Status: "PENDING", TotalAmount: total, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	for _, it := range body.Items {

@@ -18,6 +18,7 @@ type App struct {
 	JWTSecret string
 	Inventory *HTTPInventoryClient
 	Payment   *HTTPPaymentClient
+	Product   *HTTPProductClient
 	Events    EventPublisher
 }
 
@@ -122,6 +123,7 @@ func main() {
 		DB:        openDB(os.Getenv("DATABASE_URL")),
 		JWTSecret: os.Getenv("JWT_SECRET"),
 		Inventory: NewInventoryClient(os.Getenv("INVENTORY_URL")),
+		Product:   NewProductClient(os.Getenv("PRODUCT_URL")),
 		Payment:   NewPaymentClient(os.Getenv("PAYMENT_URL")),
 		Events:    NewRabbitPublisher(os.Getenv("RABBITMQ_URL")),
 	}

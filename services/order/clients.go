@@ -93,6 +93,43 @@ func (c *HTTPInventoryClient) Confirm(orderID string) error {
 	return err
 }
 
+var ErrProductNotFound = errors.New("product not found")
+
+type HTTPProductClient struct {
+	BaseURL string
+	Client  *http.Client
+}
+
+func NewProductClient(base string) *HTTPProductClient {
+	return &HTTPProductClient{BaseURL: strings.TrimRight(base, "/"), Client: &http.Client{Timeout: 3 * time.Second}}
+}
+
+// Lookup returns the authoritative catalog name and price for a product.
+func (c *HTTPProductClient) Lookup(productID string) (string, float64, error) {
+	if c == nil || c.BaseURL == "" {
+		return "", 0, errors.New("PRODUCT_URL not configured")
+	}
+	var out struct {
+		Name  string  `json:"name"`
+		Price float64 `json:"price"`
+	}
+	resp, err := c.Client.Get(c.BaseURL + "/products/" + productID)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 404 {
+		return "", 0, ErrProductNotFound
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", 0, fmt.Errorf("product service returned %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", 0, err
+	}
+	return out.Name, out.Price, nil
+}
+
 type PaymentResult struct {
 	ID      string  `json:"id"`
 	Status  string  `json:"status"`

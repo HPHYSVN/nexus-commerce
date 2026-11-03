@@ -125,11 +125,13 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
       INVENTORY_URL: http://inventory:8082
       PAYMENT_URL: http://payment:8084
+      PRODUCT_URL: http://product:8001
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-nexus}:${RABBITMQ_PASSWORD:-nexus_dev_pw}@rabbitmq:5672/
     depends_on:
       postgres: { condition: service_healthy }
       inventory: { condition: service_healthy }
       payment: { condition: service_healthy }
+      product: { condition: service_healthy }
     restart: unless-stopped
     networks: [nexus]
 

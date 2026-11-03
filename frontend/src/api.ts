@@ -10,12 +10,38 @@ export interface AppNotification { id: string; eventType: string; message: strin
 
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+let refreshing: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  const { refreshToken, login, logout } = useAuth.getState();
+  if (!refreshToken) return false;
+  if (!refreshing) {
+    refreshing = (async () => {
+      try {
+        const res = await fetch('/api/auth/refresh', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (!res.ok) { logout(); return false; }
+        const r = await res.json();
+        const u = r.user ?? {};
+        login(r.accessToken, r.refreshToken, { id: u.id, email: u.email, fullName: u.fullName ?? '', role: u.role });
+        return true;
+      } catch { return false; } finally { refreshing = null; }
+    })();
+  }
+  return refreshing;
+}
+
+async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const token = useAuth.getState().accessToken;
   const res = await fetch(path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers ?? {}) },
   });
+  if (res.status === 401 && !retried && !path.startsWith('/api/auth/') && (await tryRefresh())) {
+    return request<T>(path, init, true);
+  }
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data?.error?.message ?? data?.detail ?? `Request failed (${res.status})`);
   return data as T;
