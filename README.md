@@ -4,6 +4,8 @@
 
 E-commerce microservices platform (DDD + event-driven) built as a portfolio project. Repository: https://github.com/HPHYSVN/nexus-commerce
 
+**Live demo (Fly.io Sprite): https://my-first-sprite-b5urg.sprites.app** — register a new account to try the full flow (mock payments; choose "payment fails" at checkout to see stock release + notifications). The Sprite sleeps when idle and wakes on first request, so the first load may take a few seconds.
+
 | Service | Stack | Port | Store |
 |---|---|---|---|
 | API Gateway | NestJS — JWT verify, rate limit, proxy | 3000 | — |

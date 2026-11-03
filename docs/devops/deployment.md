@@ -23,7 +23,19 @@ curl http://localhost:3000/health
 
 Put the VM's reverse proxy (Caddy/nginx with TLS, e.g. Caddy `reverse_proxy localhost:5173`) in front of port 5173 for HTTPS. Only 80/443 should be public; PostgreSQL/Redis/RabbitMQ ports are never published.
 
-## Public demo (ephemeral tunnel, verified 2026-11-03)
+## Live deployment — Fly.io Sprite (verified 2026-11-04)
+
+**URL: https://my-first-sprite-b5urg.sprites.app** (free `sprites.app` subdomain, HTTPS, public)
+
+A Sprite is a persistent Linux VM, so the stack runs **natively** there (`deploy/sprite/deploy.sh`): PostgreSQL/Redis/RabbitMQ from apt, Identity (jar), Product/Cart/Notification (uvicorn), Inventory/Payment/Order (Go binaries), Gateway (node), Frontend served by nginx on port 8080 — the one port the Sprite URL routes to. Strong secrets live only in the Sprite's `.env`.
+
+Why not Docker-in-Sprite: the sandbox blocks `setns`/netns bind mounts, so `docker exec` healthchecks fail and container startup is flaky (documented in `docker-compose.sprite.yml`, kept for reference). The native path is stable and was verified end-to-end inside the Sprite: `tests/e2e.sh` DONE, `tests/concurrency.sh` PASSED (no oversell), `tests/security.sh` 15/15 — and the security suite also passes from the internet against the public URL. A Sprite checkpoint (`v3`) snapshots the deployed state; restore with `sprite restore v3`.
+
+Persistence caveat: the Sprite sleeps when idle; processes resume on wake (first request may be slow). If processes ever need a restart: `sprite exec -s my-first-sprite -- bash deploy/sprite/deploy.sh`.
+
+Custom free domain: not attached — a custom DNS name (e.g. DuckDNS) can CNAME to the host, but the Sprite serves TLS only for `*.sprites.app`, so a custom name would fail TLS/routing. The free `sprites.app` subdomain is the domain for this deployment.
+
+## Public demo (ephemeral tunnel, verified 2026-11-03, superseded by Sprite above)
 
 The hardened stack (strong generated `.env`, fresh volumes) is exposed over HTTPS via a Cloudflare quick tunnel to the frontend container only (backend ports are not tunneled):
 
