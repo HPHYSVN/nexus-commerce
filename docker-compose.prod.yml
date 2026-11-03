@@ -1,0 +1,12 @@
+# Production override for a single VM: only the frontend is public.
+# The gateway stays reachable to the frontend container via the internal
+# network through nginx proxying, and is also published for API demos;
+# remove the api-gateway ports mapping if only UI access is desired.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  rabbitmq:
+    ports: []
+  postgres:
+    ports: []
+  redis:
+    ports: []

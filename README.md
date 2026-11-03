@@ -1,6 +1,8 @@
 # Nexus Commerce
 
-E-commerce microservices platform (DDD + event-driven) built as a portfolio project.
+[![CI](https://github.com/HPHYSVN/nexus-commerce/actions/workflows/ci.yml/badge.svg)](https://github.com/HPHYSVN/nexus-commerce/actions/workflows/ci.yml)
+
+E-commerce microservices platform (DDD + event-driven) built as a portfolio project. Repository: https://github.com/HPHYSVN/nexus-commerce
 
 | Service | Stack | Port | Store |
 |---|---|---|---|
