@@ -61,7 +61,8 @@ done
 echo "== services =="
 export JWT_SECRET
 stop_one() { [ -f "$RUN/$1.pid" ] && kill "$(cat "$RUN/$1.pid")" 2>/dev/null || true; }
-stop_one identity
+for n in identity product cart notification inventory payment order gateway; do stop_one $n; done
+sleep 1
 DB_HOST=localhost DB_PORT=5432 DB_NAME=identity_db DB_USER=identity_user DB_PASSWORD=$IDENTITY_DB_PASSWORD \
   ADMIN_EMAIL=$ADMIN_EMAIL ADMIN_PASSWORD=$ADMIN_PASSWORD SERVER_PORT=8081 \
   nohup java -jar services/identity/target/identity-0.1.0.jar > "$LOGS/identity.log" 2>&1 &
@@ -80,15 +81,15 @@ DATABASE_URL="postgresql+psycopg://notification_user:${NOTIFICATION_DB_PASSWORD}
   nohup "$HOME/nexus-venv/bin/uvicorn" app.main:app --app-dir services/notification --host 127.0.0.1 --port 8003 > "$LOGS/notification.log" 2>&1 &
 echo $! > "$RUN/notification.pid"
 
-DATABASE_URL="postgres://inventory_user:${INVENTORY_DB_PASSWORD}@localhost:5432/inventory_db?sslmode=disable" \
+DATABASE_URL="postgres://inventory_user:${INVENTORY_DB_PASSWORD}@127.0.0.1:5432/inventory_db?sslmode=disable" \
   nohup "$BIN/inventory" > "$LOGS/inventory.log" 2>&1 &
 echo $! > "$RUN/inventory.pid"
 
-DATABASE_URL="postgres://payment_user:${PAYMENT_DB_PASSWORD}@localhost:5432/payment_db?sslmode=disable" \
+DATABASE_URL="postgres://payment_user:${PAYMENT_DB_PASSWORD}@127.0.0.1:5432/payment_db?sslmode=disable" \
   nohup "$BIN/payment" > "$LOGS/payment.log" 2>&1 &
 echo $! > "$RUN/payment.pid"
 
-DATABASE_URL="postgres://order_user:${ORDER_DB_PASSWORD}@localhost:5432/order_db?sslmode=disable" \
+DATABASE_URL="postgres://order_user:${ORDER_DB_PASSWORD}@127.0.0.1:5432/order_db?sslmode=disable" \
   INVENTORY_URL=http://127.0.0.1:8082 PAYMENT_URL=http://127.0.0.1:8084 PRODUCT_URL=http://127.0.0.1:8001 \
   RABBITMQ_URL="amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@localhost:5672/" \
   nohup "$BIN/order" > "$LOGS/order.log" 2>&1 &
