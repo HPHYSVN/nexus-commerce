@@ -15,7 +15,7 @@ AUTH="-H Authorization:Bearer\ $TOKEN"
 echo "== me =="
 curl -s $B/auth/me -H "Authorization: Bearer $TOKEN"; echo
 
-ADMIN=$(curl -s -X POST $B/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@nexus.local","password":"Admin123!"}' | JQ "d['accessToken']")
+ADMIN=$(curl -s -X POST $B/auth/login -H 'Content-Type: application/json' -d '{"email":"'"${ADMIN_EMAIL:-admin@nexus.local}"'","password":"'"${ADMIN_PASSWORD:-Admin123!}"'"}' | JQ "d['accessToken']")
 echo "== products =="
 PROD=$(curl -s "$B/products")
 PID=$(echo "$PROD" | JQ "d[0]['id']")

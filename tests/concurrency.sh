@@ -8,7 +8,7 @@ trap 'rm -rf "$TMP"' EXIT
 EMAIL="conc-$RANDOM@test.local"
 curl -s -X POST $B/auth/register -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"secret123\",\"fullName\":\"Conc\"}" > /dev/null
 TOKEN=$(curl -s -X POST $B/auth/login -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"secret123\"}" | python3 -c "import sys,json;print(json.load(sys.stdin)['accessToken'])")
-ADMIN=$(curl -s -X POST $B/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@nexus.local","password":"Admin123!"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['accessToken'])")
+ADMIN=$(curl -s -X POST $B/auth/login -H 'Content-Type: application/json' -d '{"email":"'"${ADMIN_EMAIL:-admin@nexus.local}"'","password":"'"${ADMIN_PASSWORD:-Admin123!}"'"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['accessToken'])")
 PID=$(curl -s "$B/products" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
 
 curl -s -X PUT $B/inventory/$PID -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"quantity":5}' > /dev/null

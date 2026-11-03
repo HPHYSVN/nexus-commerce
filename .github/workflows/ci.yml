@@ -70,6 +70,7 @@ jobs:
       - run: docker compose build
       - name: Smoke test the stack
         run: |
+          cp .env.example .env
           docker compose up -d
           for i in $(seq 1 60); do
             curl -sf http://localhost:3000/health && break || sleep 5

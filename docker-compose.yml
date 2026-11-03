@@ -5,13 +5,13 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-nexus}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexus_dev_pw}
-      PRODUCT_DB_PASSWORD: ${PRODUCT_DB_PASSWORD:-product_dev_pw}
-      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev_pw}
-      INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_dev_pw}
-      ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:-order_dev_pw}
-      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment_dev_pw}
-      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_dev_pw}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      PRODUCT_DB_PASSWORD: ${PRODUCT_DB_PASSWORD:?PRODUCT_DB_PASSWORD must be set in .env}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?IDENTITY_DB_PASSWORD must be set in .env}
+      INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:?INVENTORY_DB_PASSWORD must be set in .env}
+      ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:?ORDER_DB_PASSWORD must be set in .env}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:?PAYMENT_DB_PASSWORD must be set in .env}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD must be set in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
@@ -39,7 +39,7 @@ services:
     image: rabbitmq:3.13-management-alpine
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-nexus}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-nexus_dev_pw}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}
     volumes: [rabbitmq_data:/var/lib/rabbitmq]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
@@ -57,10 +57,10 @@ services:
       DB_PORT: 5432
       DB_NAME: identity_db
       DB_USER: identity_user
-      DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev_pw}
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?IDENTITY_DB_PASSWORD must be set in .env}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@nexus.local}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
     depends_on:
       postgres: { condition: service_healthy }
     restart: unless-stopped
@@ -69,8 +69,8 @@ services:
   product:
     build: ./services/product
     environment:
-      DATABASE_URL: postgresql+psycopg://product_user:${PRODUCT_DB_PASSWORD:-product_dev_pw}@postgres:5432/product_db
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      DATABASE_URL: postgresql+psycopg://product_user:${PRODUCT_DB_PASSWORD:?PRODUCT_DB_PASSWORD must be set in .env}@postgres:5432/product_db
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     depends_on:
       postgres: { condition: service_healthy }
     restart: unless-stopped
@@ -80,7 +80,7 @@ services:
     build: ./services/cart
     environment:
       REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     depends_on:
       redis: { condition: service_healthy }
     restart: unless-stopped
@@ -89,9 +89,9 @@ services:
   notification:
     build: ./services/notification
     environment:
-      DATABASE_URL: postgresql+psycopg://notification_user:${NOTIFICATION_DB_PASSWORD:-notification_dev_pw}@postgres:5432/notification_db
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nexus}:${RABBITMQ_PASSWORD:-nexus_dev_pw}@rabbitmq:5672/
+      DATABASE_URL: postgresql+psycopg://notification_user:${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD must be set in .env}@postgres:5432/notification_db
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nexus}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -101,8 +101,8 @@ services:
   inventory:
     build: ./services/inventory
     environment:
-      DATABASE_URL: postgres://inventory_user:${INVENTORY_DB_PASSWORD:-inventory_dev_pw}@postgres:5432/inventory_db?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      DATABASE_URL: postgres://inventory_user:${INVENTORY_DB_PASSWORD:?INVENTORY_DB_PASSWORD must be set in .env}@postgres:5432/inventory_db?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     depends_on:
       postgres: { condition: service_healthy }
     restart: unless-stopped
@@ -111,8 +111,8 @@ services:
   payment:
     build: ./services/payment
     environment:
-      DATABASE_URL: postgres://payment_user:${PAYMENT_DB_PASSWORD:-payment_dev_pw}@postgres:5432/payment_db?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      DATABASE_URL: postgres://payment_user:${PAYMENT_DB_PASSWORD:?PAYMENT_DB_PASSWORD must be set in .env}@postgres:5432/payment_db?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     depends_on:
       postgres: { condition: service_healthy }
     restart: unless-stopped
@@ -121,12 +121,12 @@ services:
   order:
     build: ./services/order
     environment:
-      DATABASE_URL: postgres://order_user:${ORDER_DB_PASSWORD:-order_dev_pw}@postgres:5432/order_db?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      DATABASE_URL: postgres://order_user:${ORDER_DB_PASSWORD:?ORDER_DB_PASSWORD must be set in .env}@postgres:5432/order_db?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       INVENTORY_URL: http://inventory:8082
       PAYMENT_URL: http://payment:8084
       PRODUCT_URL: http://product:8001
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nexus}:${RABBITMQ_PASSWORD:-nexus_dev_pw}@rabbitmq:5672/
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nexus}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
     depends_on:
       postgres: { condition: service_healthy }
       inventory: { condition: service_healthy }
@@ -139,7 +139,7 @@ services:
     build: ./services/api-gateway
     environment:
       PORT: 3000
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       IDENTITY_SERVICE_URL: http://identity:8081
       PRODUCT_SERVICE_URL: http://product:8001
       CART_SERVICE_URL: http://cart:8002
