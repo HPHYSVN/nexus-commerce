@@ -27,7 +27,19 @@ wait_http() { # url name
 
 echo "== infrastructure =="
 sudo service postgresql start || true
-sudo -u postgres bash -c "cd $REPO && set -a && source .env && set +a && POSTGRES_USER=postgres bash infra/postgres/init.sh" || true
+# Create per-service DBs/users via stdin (the postgres OS user cannot read $HOME).
+mkdb() { # user password db
+  sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$1'" | grep -q 1 \
+    || sudo -u postgres psql -q -c "CREATE USER $1 WITH PASSWORD '$2'"
+  sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$3'" | grep -q 1 \
+    || sudo -u postgres createdb -O "$1" "$3"
+}
+mkdb identity_user "$IDENTITY_DB_PASSWORD" identity_db
+mkdb product_user "$PRODUCT_DB_PASSWORD" product_db
+mkdb inventory_user "$INVENTORY_DB_PASSWORD" inventory_db
+mkdb order_user "$ORDER_DB_PASSWORD" order_db
+mkdb payment_user "$PAYMENT_DB_PASSWORD" payment_db
+mkdb notification_user "$NOTIFICATION_DB_PASSWORD" notification_db
 mkdir -p "$HOME/redis-data"
 redis-cli -h 127.0.0.1 ping > /dev/null 2>&1 || redis-server --daemonize yes --bind 127.0.0.1 --port 6379 --appendonly yes --dir "$HOME/redis-data"
 sudo service rabbitmq-server start || true
@@ -90,11 +102,12 @@ PORT=3000 IDENTITY_SERVICE_URL=http://127.0.0.1:8081 PRODUCT_SERVICE_URL=http://
 echo $! > "$RUN/gateway.pid"
 
 echo "== frontend (nginx on 8080, the Sprite URL port) =="
+sudo rm -rf /var/www/nexus && sudo cp -r frontend/dist /var/www/nexus && sudo chown -R www-data:www-data /var/www/nexus
 sudo tee /etc/nginx/sites-available/nexus > /dev/null <<NGINX
 server {
     listen 8080;
     server_name _;
-    root $REPO/frontend/dist;
+    root /var/www/nexus;
     index index.html;
     location /api/ {
         proxy_pass http://127.0.0.1:3000;
