@@ -10,6 +10,7 @@ REPO=$PWD
 RUN=$HOME/nexus-run; LOGS=$HOME/nexus-logs; BIN=$HOME/nexus-bin
 mkdir -p "$RUN" "$LOGS" "$BIN"
 set -a; source .env; set +a
+: "${INTERNAL_TOKEN:?INTERNAL_TOKEN must be set in .env (service-to-service auth)}"
 
 start() { # name cmd...
   local name=$1; shift
@@ -56,7 +57,7 @@ done
 [ -d "$HOME/nexus-venv" ] || python3 -m venv "$HOME/nexus-venv"
 "$HOME/nexus-venv/bin/pip" install -q -r services/product/requirements.txt -r services/cart/requirements.txt -r services/notification/requirements.txt
 (cd services/api-gateway && npm ci --silent && npm run build --silent)
-(cd frontend && npm ci --silent && npm run build --silent)
+(cd frontend && npm ci --silent && VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID:-} npm run build --silent)
 
 echo "== services =="
 export JWT_SECRET
@@ -65,6 +66,7 @@ for n in identity product cart notification inventory payment order gateway; do 
 sleep 1
 DB_HOST=localhost DB_PORT=5432 DB_NAME=identity_db DB_USER=identity_user DB_PASSWORD=$IDENTITY_DB_PASSWORD \
   ADMIN_EMAIL=$ADMIN_EMAIL ADMIN_PASSWORD=$ADMIN_PASSWORD SERVER_PORT=8081 \
+  GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-} MAIL_HOST=${MAIL_HOST:-} MAIL_PORT=${MAIL_PORT:-587} MAIL_USERNAME=${MAIL_USERNAME:-} MAIL_PASSWORD=${MAIL_PASSWORD:-} MAIL_FROM=${MAIL_FROM:-} APP_BASE_URL=${APP_BASE_URL:-https://my-first-sprite-b5urg.sprites.app} \
   nohup java -jar services/identity/target/identity-0.1.0.jar > "$LOGS/identity.log" 2>&1 &
 echo $! > "$RUN/identity.pid"
 
@@ -81,17 +83,17 @@ DATABASE_URL="postgresql+psycopg://notification_user:${NOTIFICATION_DB_PASSWORD}
   nohup "$HOME/nexus-venv/bin/uvicorn" app.main:app --app-dir services/notification --host 127.0.0.1 --port 8003 > "$LOGS/notification.log" 2>&1 &
 echo $! > "$RUN/notification.pid"
 
-DATABASE_URL="postgres://inventory_user:${INVENTORY_DB_PASSWORD}@127.0.0.1:5432/inventory_db?sslmode=disable" \
+DATABASE_URL="postgres://inventory_user:${INVENTORY_DB_PASSWORD}@127.0.0.1:5432/inventory_db?sslmode=disable" INTERNAL_TOKEN=$INTERNAL_TOKEN \
   nohup "$BIN/inventory" > "$LOGS/inventory.log" 2>&1 &
 echo $! > "$RUN/inventory.pid"
 
-DATABASE_URL="postgres://payment_user:${PAYMENT_DB_PASSWORD}@127.0.0.1:5432/payment_db?sslmode=disable" \
+DATABASE_URL="postgres://payment_user:${PAYMENT_DB_PASSWORD}@127.0.0.1:5432/payment_db?sslmode=disable" INTERNAL_TOKEN=$INTERNAL_TOKEN \
   nohup "$BIN/payment" > "$LOGS/payment.log" 2>&1 &
 echo $! > "$RUN/payment.pid"
 
 DATABASE_URL="postgres://order_user:${ORDER_DB_PASSWORD}@127.0.0.1:5432/order_db?sslmode=disable" \
   INVENTORY_URL=http://127.0.0.1:8082 PAYMENT_URL=http://127.0.0.1:8084 PRODUCT_URL=http://127.0.0.1:8001 \
-  RABBITMQ_URL="amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@localhost:5672/" \
+  RABBITMQ_URL="amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@localhost:5672/" INTERNAL_TOKEN=$INTERNAL_TOKEN \
   nohup "$BIN/order" > "$LOGS/order.log" 2>&1 &
 echo $! > "$RUN/order.pid"
 

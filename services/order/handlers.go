@@ -119,6 +119,23 @@ func (a *App) publish(eventType string, o Order, c *gin.Context) {
 	a.Events.Publish(eventType, o, corr)
 }
 
+// resolveIdempotencyKey prefers the Idempotency-Key header, then the body field.
+func resolveIdempotencyKey(header, body string) string {
+	if header != "" {
+		return header
+	}
+	return body
+}
+
+func (a *App) findOrderByIdempotency(userID, key string) (*Order, error) {
+	var id string
+	err := a.DB.QueryRow(`SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2`, userID, key).Scan(&id)
+	if err != nil {
+		return nil, err
+	}
+	return a.loadOrder(id)
+}
+
 func (a *App) CreateOrder(c *gin.Context) {
 	if a.DB == nil {
 		writeError(c, 500, "INTERNAL", "database unavailable")
@@ -126,12 +143,24 @@ func (a *App) CreateOrder(c *gin.Context) {
 	}
 	userID := c.GetString("userId")
 	var body struct {
-		Items        []OrderItemInput `json:"items"`
-		PaymentToken string           `json:"paymentToken"`
+		Items          []OrderItemInput `json:"items"`
+		PaymentToken   string           `json:"paymentToken"`
+		IdempotencyKey string           `json:"idempotencyKey"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		writeError(c, 400, "VALIDATION_ERROR", "invalid JSON body")
 		return
+	}
+	idempotencyKey := resolveIdempotencyKey(c.GetHeader("Idempotency-Key"), body.IdempotencyKey)
+	// Idempotent replay: return before any reservation/payment side effects.
+	if idempotencyKey != "" {
+		if existing, err := a.findOrderByIdempotency(userID, idempotencyKey); err == nil {
+			c.JSON(200, existing)
+			return
+		} else if err != sql.ErrNoRows {
+			writeError(c, 500, "INTERNAL", err.Error())
+			return
+		}
 	}
 	if err := ValidateCreateOrder(body.Items); err != nil {
 		writeError(c, 400, "VALIDATION_ERROR", err.Error())
@@ -166,8 +195,19 @@ func (a *App) CreateOrder(c *gin.Context) {
 		writeError(c, 500, "INTERNAL", err.Error())
 		return
 	}
-	if _, err := tx.Exec(`INSERT INTO orders(id, user_id, status, total_amount) VALUES($1,$2,'PENDING',$3)`, o.ID, o.UserID, o.TotalAmount); err != nil {
+	var keyArg interface{}
+	if idempotencyKey != "" {
+		keyArg = idempotencyKey
+	}
+	if _, err := tx.Exec(`INSERT INTO orders(id, user_id, status, total_amount, idempotency_key) VALUES($1,$2,'PENDING',$3,$4)`, o.ID, o.UserID, o.TotalAmount, keyArg); err != nil {
 		tx.Rollback()
+		// Unique-violation race on (user_id, idempotency_key): return winner.
+		if idempotencyKey != "" {
+			if existing, e2 := a.findOrderByIdempotency(userID, idempotencyKey); e2 == nil {
+				c.JSON(200, existing)
+				return
+			}
+		}
 		writeError(c, 500, "INTERNAL", err.Error())
 		return
 	}
@@ -179,6 +219,12 @@ func (a *App) CreateOrder(c *gin.Context) {
 		}
 	}
 	if err := tx.Commit(); err != nil {
+		if idempotencyKey != "" {
+			if existing, e2 := a.findOrderByIdempotency(userID, idempotencyKey); e2 == nil {
+				c.JSON(200, existing)
+				return
+			}
+		}
 		writeError(c, 500, "INTERNAL", err.Error())
 		return
 	}
@@ -295,14 +341,24 @@ func (a *App) CancelOrder(c *gin.Context) {
 	if o.Status == "PENDING" {
 		_ = a.Inventory.Release(o.ID)
 	}
+	refunded := false
 	if o.Status == "CONFIRMED" {
+		// Refund first; failure is logged but does not block cancellation.
+		if _, err := a.Payment.Refund(o.ID); err != nil {
+			log.Printf("refund failed for order %s: %v (continuing cancel)", o.ID, err)
+		} else {
+			refunded = true
+		}
 		// Stock was already deducted on confirm; return it.
 		for _, it := range o.Items {
-			_ = a.Inventory.Restock(it.ProductID, it.Quantity)
+			_ = a.Inventory.Restock(o.ID, it.ProductID, it.Quantity)
 		}
 	}
 	_ = a.updateStatus(o.ID, "CANCELLED")
 	o.Status = "CANCELLED"
+	if refunded {
+		a.publish("PaymentRefunded", *o, c)
+	}
 	a.publish("OrderCancelled", *o, c)
 	c.JSON(200, o)
 }

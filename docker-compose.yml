@@ -60,6 +60,13 @@ services:
       DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?IDENTITY_DB_PASSWORD must be set in .env}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@nexus.local}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
     depends_on:
       postgres: { condition: service_healthy }
@@ -103,6 +110,7 @@ services:
     environment:
       DATABASE_URL: postgres://inventory_user:${INVENTORY_DB_PASSWORD:?INVENTORY_DB_PASSWORD must be set in .env}@postgres:5432/inventory_db?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN must be set in .env}
     depends_on:
       postgres: { condition: service_healthy }
     restart: unless-stopped
@@ -113,6 +121,7 @@ services:
     environment:
       DATABASE_URL: postgres://payment_user:${PAYMENT_DB_PASSWORD:?PAYMENT_DB_PASSWORD must be set in .env}@postgres:5432/payment_db?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN must be set in .env}
     depends_on:
       postgres: { condition: service_healthy }
     restart: unless-stopped
@@ -126,6 +135,7 @@ services:
       INVENTORY_URL: http://inventory:8082
       PAYMENT_URL: http://payment:8084
       PRODUCT_URL: http://product:8001
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN must be set in .env}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-nexus}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
     depends_on:
       postgres: { condition: service_healthy }

@@ -27,7 +27,7 @@ public class AdminSeeder implements CommandLineRunner {
             UserRepository users,
             PasswordEncoder passwordEncoder,
             @Value("${app.admin.email:admin@nexus.local}") String email,
-            @Value("${app.admin.password:Admin123!}") String password,
+            @Value("${app.admin.password:}") String password,
             @Value("${app.admin.full-name:Administrator}") String fullName) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
@@ -39,9 +39,16 @@ public class AdminSeeder implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
+        if (password == null || password.isBlank()) {
+            log.info("Skipping admin seed: ADMIN_PASSWORD is not set");
+            return;
+        }
         String normalized = email.trim().toLowerCase(Locale.ROOT);
         if (!users.existsByEmail(normalized)) {
-            users.save(new User(normalized, passwordEncoder.encode(password), fullName, Role.ADMIN));
+            User admin = new User(normalized, passwordEncoder.encode(password), fullName, Role.ADMIN);
+            admin.setProvider("LOCAL");
+            admin.setEmailVerified(true);
+            users.save(admin);
             log.info("Seeded admin user {}", normalized);
         }
     }

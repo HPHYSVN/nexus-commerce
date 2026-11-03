@@ -15,11 +15,20 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Column
     private String passwordHash;
 
     @Column(nullable = false)
     private String fullName;
+
+    @Column(columnDefinition = "varchar(20) not null default 'LOCAL'")
+    private String provider = "LOCAL";
+
+    @Column(unique = true)
+    private String googleSubject;
+
+    @Column(columnDefinition = "boolean not null default false")
+    private boolean emailVerified = false;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -32,6 +41,7 @@ public class User {
     void onCreate() {
         if (createdAt == null) createdAt = Instant.now();
         if (role == null) role = Role.CUSTOMER;
+        if (provider == null || provider.isBlank()) provider = "LOCAL";
     }
 
     public User() {}
@@ -52,5 +62,11 @@ public class User {
     public void setFullName(String fullName) { this.fullName = fullName; }
     public Role getRole() { return role; }
     public void setRole(Role role) { this.role = role; }
+    public String getProvider() { return provider; }
+    public void setProvider(String provider) { this.provider = provider; }
+    public String getGoogleSubject() { return googleSubject; }
+    public void setGoogleSubject(String googleSubject) { this.googleSubject = googleSubject; }
+    public boolean isEmailVerified() { return emailVerified; }
+    public void setEmailVerified(boolean emailVerified) { this.emailVerified = emailVerified; }
     public Instant getCreatedAt() { return createdAt; }
 }

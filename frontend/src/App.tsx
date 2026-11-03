@@ -7,6 +7,7 @@ import { LoginPage, RegisterPage } from './pages/Auth';
 import { CartPage, CheckoutPage } from './pages/CartCheckout';
 import { OrderDetailPage, OrdersPage } from './pages/Orders';
 import { AdminPage } from './pages/Admin';
+import { ForgotPasswordPage, ProfilePage, ResetPasswordPage, VerifyEmailPage } from './pages/Account';
 import type { ReactNode } from 'react';
 
 function RequireAuth({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
@@ -31,7 +32,7 @@ function Header() {
         {user?.role === 'ADMIN' && <Link to="/admin" className="text-sm font-medium hover:underline">Admin</Link>}
         <div className="ml-auto flex items-center gap-3 text-sm">
           {user ? (<>
-            <span className="hidden text-slate-600 sm:inline">{user.fullName || user.email}</span>
+            <Link to="/profile" className="hidden text-slate-600 hover:underline sm:inline">{user.fullName || user.email}</Link>
             <button className="btn-secondary" onClick={() => { logout(); navigate('/'); }}>Logout</button>
           </>) : (<>
             <Link to="/login" className="hover:underline">Login</Link>
@@ -64,6 +65,10 @@ export default function App() {
           <Route path="/products/:id" element={<ProductDetailPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
           <Route path="/cart" element={<RequireAuth><CartPage /></RequireAuth>} />
           <Route path="/checkout" element={<RequireAuth><CheckoutPage /></RequireAuth>} />
           <Route path="/orders" element={<RequireAuth><OrdersPage /></RequireAuth>} />

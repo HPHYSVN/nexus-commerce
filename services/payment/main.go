@@ -14,7 +14,8 @@ import (
 )
 
 type App struct {
-	DB *sql.DB
+	DB            *sql.DB
+	InternalToken string
 }
 
 func writeError(c *gin.Context, status int, code, message string) {
@@ -63,12 +64,17 @@ func openDB(url string) *sql.DB {
 }
 
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS payments (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, user_id TEXT NOT NULL, amount NUMERIC NOT NULL, status TEXT NOT NULL, provider TEXT NOT NULL DEFAULT 'MOCK', idempotency_key TEXT UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`)
-	if err != nil {
-		return err
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS payments (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, user_id TEXT NOT NULL, amount NUMERIC NOT NULL, status TEXT NOT NULL, provider TEXT NOT NULL DEFAULT 'MOCK', idempotency_key TEXT UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), refunded_at TIMESTAMPTZ)`,
+		`ALTER TABLE payments ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ`,
+		`CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id)`,
 	}
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id)`)
-	return err
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 var _ = strings.TrimSpace
@@ -76,9 +82,10 @@ var _ = strings.TrimSpace
 func setupRouter(app *App) *gin.Engine {
 	r := gin.Default()
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok", "service": "payment"}) })
-	r.POST("/payments", app.CreatePayment)
+	r.POST("/payments", app.requireInternal, app.CreatePayment)
+	r.POST("/payments/order/:orderId/refund", app.requireInternal, app.RefundPayment)
 	// Catch-all avoids Gin conflict between /payments/:id and /payments/order/:orderId.
-	r.GET("/payments/*path", app.GetPaymentDispatch)
+	r.GET("/payments/*path", app.requireInternal, app.GetPaymentDispatch)
 	return r
 }
 
@@ -87,7 +94,7 @@ func main() {
 	if os.Getenv("RABBITMQ_URL") != "" {
 		log.Println("RABBITMQ_URL set (payment service does not publish; order service publishes payment events)")
 	}
-	app := &App{DB: openDB(os.Getenv("DATABASE_URL"))}
+	app := &App{DB: openDB(os.Getenv("DATABASE_URL")), InternalToken: os.Getenv("INTERNAL_TOKEN")}
 	log.Printf("payment listening on %s", port)
 	if err := setupRouter(app).Run(":" + port); err != nil {
 		log.Fatal(err)

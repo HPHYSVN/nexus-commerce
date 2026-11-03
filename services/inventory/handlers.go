@@ -140,26 +140,57 @@ func (a *App) CreateReservation(c *gin.Context) {
 	c.JSON(201, r)
 }
 
+func validateRestock(orderID, productID string, qty int) bool {
+	return orderID != "" && productID != "" && qty > 0
+}
+
+// shouldRestock reports whether stock must be incremented: only the first
+// (order_id, product_id) restock event inserts a row.
+func shouldRestock(rowsInserted int64) bool { return rowsInserted > 0 }
+
 // Restock returns units to available stock (used when a CONFIRMED order is cancelled).
+// Idempotent per (orderId, productId) via restock_events.
 func (a *App) Restock(c *gin.Context) {
 	if a.DB == nil {
 		writeError(c, 500, "INTERNAL", "database unavailable")
 		return
 	}
 	var body struct {
+		OrderID   string `json:"orderId"`
 		ProductID string `json:"productId"`
 		Quantity  int    `json:"quantity"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil || body.ProductID == "" || body.Quantity <= 0 {
-		writeError(c, 400, "VALIDATION_ERROR", "productId and quantity>0 are required")
+	if err := c.ShouldBindJSON(&body); err != nil || !validateRestock(body.OrderID, body.ProductID, body.Quantity) {
+		writeError(c, 400, "VALIDATION_ERROR", "orderId, productId and quantity>0 are required")
 		return
 	}
-	if _, err := a.DB.Exec(`INSERT INTO stock_items(product_id, quantity, reserved) VALUES($1,$2,0) ON CONFLICT(product_id) DO UPDATE SET quantity=stock_items.quantity+EXCLUDED.quantity`, body.ProductID, body.Quantity); err != nil {
+	tx, err := a.DB.Begin()
+	if err != nil {
 		writeError(c, 500, "INTERNAL", err.Error())
 		return
 	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`INSERT INTO restock_events(order_id, product_id, quantity) VALUES($1,$2,$3) ON CONFLICT(order_id, product_id) DO NOTHING`, body.OrderID, body.ProductID, body.Quantity)
+	if err != nil {
+		writeError(c, 500, "INTERNAL", err.Error())
+		return
+	}
+	n, _ := res.RowsAffected()
+	if shouldRestock(n) {
+		if _, err := tx.Exec(`INSERT INTO stock_items(product_id, quantity, reserved) VALUES($1,$2,0) ON CONFLICT(product_id) DO UPDATE SET quantity=stock_items.quantity+EXCLUDED.quantity`, body.ProductID, body.Quantity); err != nil {
+			writeError(c, 500, "INTERNAL", err.Error())
+			return
+		}
+	}
 	var q, r int
-	_ = a.DB.QueryRow(`SELECT quantity, reserved FROM stock_items WHERE product_id=$1`, body.ProductID).Scan(&q, &r)
+	if err := tx.QueryRow(`SELECT quantity, reserved FROM stock_items WHERE product_id=$1`, body.ProductID).Scan(&q, &r); err != nil && err != sql.ErrNoRows {
+		writeError(c, 500, "INTERNAL", err.Error())
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(c, 500, "INTERNAL", err.Error())
+		return
+	}
 	c.JSON(200, stockResp{body.ProductID, q, r, Available(q, r)})
 }
 

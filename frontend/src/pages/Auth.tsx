@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth, useToast } from '../store';
+import { GoogleButton } from './Account';
 
 function normalizeUser(resp: any) {
   const u = resp.user ?? resp;
-  return { id: u.id, email: u.email, fullName: u.fullName ?? u.full_name ?? '', role: u.role };
+  return { id: u.id, email: u.email, fullName: u.fullName ?? u.full_name ?? '', role: u.role, emailVerified: u.emailVerified, provider: u.provider };
 }
 
 export function LoginPage() {
@@ -30,7 +31,8 @@ export function LoginPage() {
       <div className="mt-4"><label className="label" htmlFor="password">Password</label><input id="password" type="password" required minLength={6} className="input" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
       <button className="btn mt-6 w-full" disabled={busy}>{busy ? 'Signing in…' : 'Login'}</button>
       <p className="mt-4 text-sm text-slate-600">No account? <Link className="underline" to="/register">Register</Link></p>
-      <p className="mt-2 text-xs text-slate-500">Demo admin: admin@nexus.local / Admin123!</p>
+      <p className="mt-2 text-sm"><Link className="underline" to="/forgot-password">Forgot password?</Link></p>
+      <GoogleButton />
     </form>
   );
 }
@@ -55,6 +57,7 @@ export function RegisterPage() {
       <div className="mt-4"><label className="label" htmlFor="password">Password</label><input id="password" type="password" required minLength={6} className="input" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
       <button className="btn mt-6 w-full" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button>
       <p className="mt-4 text-sm text-slate-600">Already registered? <Link className="underline" to="/login">Login</Link></p>
+      <GoogleButton />
     </form>
   );
 }

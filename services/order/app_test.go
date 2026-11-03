@@ -1,7 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -71,5 +74,74 @@ func TestVerifyJWT(t *testing.T) {
 	}
 	if _, err := VerifyJWT(tok, "bad"); err == nil {
 		t.Fatal("bad secret should fail")
+	}
+}
+
+func TestVerifyJWTNoExpAndExpired(t *testing.T) {
+	secret := "test-secret-at-least-32-chars-long!!"
+	if _, err := VerifyJWT(SignJWT(Claims{Sub: "u", Role: "USER"}, secret), secret); err == nil {
+		t.Fatal("no-exp token should fail")
+	}
+	expired := SignJWT(Claims{Sub: "u", Role: "USER", Exp: time.Now().Add(-time.Hour).Unix()}, secret)
+	if _, err := VerifyJWT(expired, secret); err == nil {
+		t.Fatal("expired token should fail")
+	}
+}
+
+func TestResolveIdempotencyKeyAndValidInternalToken(t *testing.T) {
+	if resolveIdempotencyKey("hdr", "body") != "hdr" || resolveIdempotencyKey("", "body") != "body" || resolveIdempotencyKey("", "") != "" {
+		t.Fatal("resolveIdempotencyKey mismatch")
+	}
+	if !validInternalToken("s3cret", "s3cret") || validInternalToken("wrong", "s3cret") || validInternalToken("s3cret", "") {
+		t.Fatal("validInternalToken mismatch")
+	}
+}
+
+// Clients must send X-Internal-Token on inventory/payment calls (not product lookup).
+func TestClientsSendInternalToken(t *testing.T) {
+	var seen []string
+	var refundPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.Path+" token="+r.Header.Get("X-Internal-Token"))
+		if r.URL.Path == "/payments/order/o1/refund" {
+			refundPath = r.URL.Path
+			var body map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"pay1","status":"REFUNDED","orderId":"o1"}`))
+	}))
+	defer srv.Close()
+	inv := NewInventoryClient(srv.URL, "tok123")
+	pay := NewPaymentClient(srv.URL, "tok123")
+	if err := inv.Reserve("o1", "p1", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := inv.Release("o1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := inv.Confirm("o1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := inv.Restock("o1", "p1", 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pay.Pay("o1", "u1", 10, "tok_ok", "k1"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := pay.Refund("o1")
+	if err != nil || res == nil || res.Status != "REFUNDED" {
+		t.Fatalf("refund: %v %+v", err, res)
+	}
+	if refundPath != "/payments/order/o1/refund" {
+		t.Fatalf("refund path %q", refundPath)
+	}
+	if len(seen) != 6 {
+		t.Fatalf("seen %v", seen)
+	}
+	for _, s := range seen {
+		if want := " token=tok123"; len(s) < len(want) || s[len(s)-len(want):] != want {
+			t.Fatalf("missing internal token: %q", s)
+		}
 	}
 }

@@ -6,7 +6,11 @@ import rateLimit from 'express-rate-limit';
 import { AppModule } from './app.module';
 import { verifyToken } from './jwt.util';
 
-const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me-at-least-32-chars';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error('JWT_SECRET env must be set (>= 32 chars) — refusing to start with a fallback secret');
+}
+const SECRET: string = JWT_SECRET;
 
 const err = (res: any, status: number, code: string, message: string) => {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -14,7 +18,7 @@ const err = (res: any, status: number, code: string, message: string) => {
 };
 
 const PUBLIC: Array<[string, RegExp]> = [
-  ['POST', /^\/api\/auth\/(register|login|refresh)$/],
+  ['POST', /^\/api\/auth\/(register|login|refresh|google|verify-email|forgot-password|reset-password)$/],
   ['GET', /^\/api\/products(\/.*)?$/],
   ['GET', /^\/api\/categories$/],
 ];
@@ -29,7 +33,7 @@ function authGuard(req: any, res: any, next: () => void) {
   const header: string = req.headers.authorization ?? '';
   if (!header.startsWith('Bearer ')) return err(res, 401, 'UNAUTHORIZED', 'Missing bearer token');
   try {
-    const claims = verifyToken(header.slice(7), JWT_SECRET);
+    const claims = verifyToken(header.slice(7), SECRET);
     req.user = claims;
     const adminWrite =
       (/^\/api\/products/.test(req.path) && ['POST', 'PUT', 'DELETE'].includes(req.method)) ||

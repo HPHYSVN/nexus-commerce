@@ -66,7 +66,10 @@ func VerifyJWT(token string, secret string) (*Claims, error) {
 			}
 		}
 	}
-	if c.Exp != 0 && time.Now().Unix() > c.Exp {
+	if c.Exp == 0 {
+		return nil, errors.New("token missing exp")
+	}
+	if time.Now().Unix() > c.Exp {
 		return nil, errors.New("token expired")
 	}
 	return &c, nil

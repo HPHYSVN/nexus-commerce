@@ -26,7 +26,7 @@ docker compose up --build
 ```
 
 - Frontend: http://localhost:5173 · Gateway: http://localhost:3000/health · Products: http://localhost:3000/api/products
-- Demo admin (seeded): `admin@nexus.local` / `Admin123!`
+- Demo admin: seeded from `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `.env` (see `.env.example`); no default credentials ship in code
 - Mock payment: in checkout choose "payment succeeds" (`tok_success`) or "payment fails" (`tok_fail`, verifies stock release). No real payments.
 
 ## Architecture

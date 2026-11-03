@@ -14,23 +14,33 @@ import (
 var ErrInsufficientStock = errors.New("insufficient stock")
 
 type HTTPInventoryClient struct {
-	BaseURL string
-	Client  *http.Client
+	BaseURL       string
+	InternalToken string
+	Client        *http.Client
 }
 
 type HTTPPaymentClient struct {
-	BaseURL string
-	Client  *http.Client
+	BaseURL       string
+	InternalToken string
+	Client        *http.Client
 }
 
-func NewInventoryClient(base string) *HTTPInventoryClient {
-	return &HTTPInventoryClient{BaseURL: strings.TrimRight(base, "/"), Client: &http.Client{Timeout: 3 * time.Second}}
-}
-func NewPaymentClient(base string) *HTTPPaymentClient {
-	return &HTTPPaymentClient{BaseURL: strings.TrimRight(base, "/"), Client: &http.Client{Timeout: 5 * time.Second}}
+func firstToken(tokens []string) string {
+	if len(tokens) > 0 {
+		return tokens[0]
+	}
+	return ""
 }
 
-func doJSON(client *http.Client, method, url string, in interface{}, out interface{}) (int, error) {
+func NewInventoryClient(base string, internalToken ...string) *HTTPInventoryClient {
+	return &HTTPInventoryClient{BaseURL: strings.TrimRight(base, "/"), InternalToken: firstToken(internalToken), Client: &http.Client{Timeout: 3 * time.Second}}
+}
+func NewPaymentClient(base string, internalToken ...string) *HTTPPaymentClient {
+	return &HTTPPaymentClient{BaseURL: strings.TrimRight(base, "/"), InternalToken: firstToken(internalToken), Client: &http.Client{Timeout: 5 * time.Second}}
+}
+
+// doJSON sends JSON; a non-empty internalToken is attached as X-Internal-Token.
+func doJSON(client *http.Client, method, url string, in interface{}, out interface{}, internalToken ...string) (int, error) {
 	var body io.Reader
 	if in != nil {
 		b, _ := json.Marshal(in)
@@ -43,6 +53,7 @@ func doJSON(client *http.Client, method, url string, in interface{}, out interfa
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	setInternalToken(req, firstToken(internalToken))
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
@@ -65,7 +76,7 @@ func (c *HTTPInventoryClient) Reserve(orderID, productID string, qty int) error 
 	if c == nil || c.BaseURL == "" {
 		return errors.New("INVENTORY_URL not configured")
 	}
-	_, err := doJSON(c.Client, "POST", c.BaseURL+"/internal/reservations", map[string]interface{}{"orderId": orderID, "productId": productID, "quantity": qty}, nil)
+	_, err := doJSON(c.Client, "POST", c.BaseURL+"/internal/reservations", map[string]interface{}{"orderId": orderID, "productId": productID, "quantity": qty}, nil, c.InternalToken)
 	return err
 }
 
@@ -73,15 +84,15 @@ func (c *HTTPInventoryClient) Release(orderID string) error {
 	if c == nil || c.BaseURL == "" {
 		return errors.New("INVENTORY_URL not configured")
 	}
-	_, err := doJSON(c.Client, "POST", c.BaseURL+"/internal/reservations/"+orderID+"/release", map[string]interface{}{}, nil)
+	_, err := doJSON(c.Client, "POST", c.BaseURL+"/internal/reservations/"+orderID+"/release", map[string]interface{}{}, nil, c.InternalToken)
 	return err
 }
 
-func (c *HTTPInventoryClient) Restock(productID string, qty int) error {
+func (c *HTTPInventoryClient) Restock(orderID, productID string, qty int) error {
 	if c == nil || c.BaseURL == "" {
 		return errors.New("INVENTORY_URL not configured")
 	}
-	_, err := doJSON(c.Client, "POST", c.BaseURL+"/internal/restock", map[string]interface{}{"productId": productID, "quantity": qty}, nil)
+	_, err := doJSON(c.Client, "POST", c.BaseURL+"/internal/restock", map[string]interface{}{"orderId": orderID, "productId": productID, "quantity": qty}, nil, c.InternalToken)
 	return err
 }
 
@@ -89,7 +100,7 @@ func (c *HTTPInventoryClient) Confirm(orderID string) error {
 	if c == nil || c.BaseURL == "" {
 		return errors.New("INVENTORY_URL not configured")
 	}
-	_, err := doJSON(c.Client, "POST", c.BaseURL+"/internal/reservations/"+orderID+"/confirm", map[string]interface{}{}, nil)
+	_, err := doJSON(c.Client, "POST", c.BaseURL+"/internal/reservations/"+orderID+"/confirm", map[string]interface{}{}, nil, c.InternalToken)
 	return err
 }
 
@@ -142,7 +153,20 @@ func (c *HTTPPaymentClient) Pay(orderID, userID string, amount float64, token, i
 		return nil, errors.New("PAYMENT_URL not configured")
 	}
 	var out PaymentResult
-	_, err := doJSON(c.Client, "POST", c.BaseURL+"/payments", map[string]interface{}{"orderId": orderID, "userId": userID, "amount": amount, "paymentToken": token, "idempotencyKey": idempotencyKey}, &out)
+	_, err := doJSON(c.Client, "POST", c.BaseURL+"/payments", map[string]interface{}{"orderId": orderID, "userId": userID, "amount": amount, "paymentToken": token, "idempotencyKey": idempotencyKey}, &out, c.InternalToken)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Refund refunds the (latest SUCCEEDED) payment for an order; idempotent server-side.
+func (c *HTTPPaymentClient) Refund(orderID string) (*PaymentResult, error) {
+	if c == nil || c.BaseURL == "" {
+		return nil, errors.New("PAYMENT_URL not configured")
+	}
+	var out PaymentResult
+	_, err := doJSON(c.Client, "POST", c.BaseURL+"/payments/order/"+orderID+"/refund", map[string]interface{}{}, &out, c.InternalToken)
 	if err != nil {
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, money } from '../api';
@@ -42,13 +42,20 @@ export function CheckoutPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast((s) => s.push);
+  const idempotencyKey = useRef(crypto.randomUUID());
   const place = useMutation({
-    mutationFn: () => api.createOrder({ items: cart!.items.map((i) => ({ productId: i.productId, productName: i.productName, unitPrice: i.unitPrice, quantity: i.quantity })), paymentToken: token }),
+    mutationFn: () => api.createOrder({ items: cart!.items.map((i) => ({ productId: i.productId, productName: i.productName, unitPrice: i.unitPrice, quantity: i.quantity })), paymentToken: token }, idempotencyKey.current),
     onSuccess: async (order) => {
-      await api.clearCart().catch(() => undefined);
-      qc.invalidateQueries({ queryKey: ['cart'] }); qc.invalidateQueries({ queryKey: ['orders'] });
-      if (order.status === 'PAYMENT_FAILED') { toast('Payment failed — stock released', 'err'); }
-      else toast(`Order ${order.status.toLowerCase()}`);
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      if (order.status === 'PAYMENT_FAILED') {
+        // Keep the cart so the shopper can retry payment; stock was released server-side.
+        toast('Payment failed — stock released, cart kept for retry', 'err');
+      } else {
+        await api.clearCart().catch(() => undefined);
+        qc.invalidateQueries({ queryKey: ['cart'] });
+        toast(`Order ${order.status.toLowerCase()}`);
+      }
+      idempotencyKey.current = crypto.randomUUID();
       navigate(`/orders/${order.id}`);
     },
     onError: (e: Error) => toast(e.message, 'err'),

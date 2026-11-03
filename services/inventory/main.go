@@ -15,8 +15,9 @@ import (
 )
 
 type App struct {
-	DB        *sql.DB
-	JWTSecret string
+	DB            *sql.DB
+	JWTSecret     string
+	InternalToken string
 }
 
 func writeError(c *gin.Context, status int, code, message string) {
@@ -70,6 +71,7 @@ func migrate(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS stock_items (product_id TEXT PRIMARY KEY, quantity INT NOT NULL DEFAULT 0, reserved INT NOT NULL DEFAULT 0)`,
 		`CREATE TABLE IF NOT EXISTS reservations (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, order_id TEXT NOT NULL, quantity INT NOT NULL, status TEXT NOT NULL DEFAULT 'ACTIVE', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(order_id, product_id))`,
 		`CREATE INDEX IF NOT EXISTS idx_reservations_order ON reservations(order_id)`,
+		`CREATE TABLE IF NOT EXISTS restock_events (order_id TEXT NOT NULL, product_id TEXT NOT NULL, quantity INT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(order_id, product_id))`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -107,16 +109,16 @@ func setupRouter(app *App) *gin.Engine {
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok", "service": "inventory"}) })
 	r.GET("/stock/:productId", app.GetStock)
 	r.PUT("/stock/:productId", app.requireAdmin, app.PutStock)
-	r.POST("/internal/reservations", app.CreateReservation)
-	r.POST("/internal/reservations/:orderId/release", app.ReleaseReservations)
-	r.POST("/internal/reservations/:orderId/confirm", app.ConfirmReservations)
-	r.POST("/internal/restock", app.Restock)
+	r.POST("/internal/reservations", app.requireInternal, app.CreateReservation)
+	r.POST("/internal/reservations/:orderId/release", app.requireInternal, app.ReleaseReservations)
+	r.POST("/internal/reservations/:orderId/confirm", app.requireInternal, app.ConfirmReservations)
+	r.POST("/internal/restock", app.requireInternal, app.Restock)
 	return r
 }
 
 func main() {
 	port := getenv("PORT", "8082")
-	app := &App{DB: openDB(os.Getenv("DATABASE_URL")), JWTSecret: os.Getenv("JWT_SECRET")}
+	app := &App{DB: openDB(os.Getenv("DATABASE_URL")), JWTSecret: os.Getenv("JWT_SECRET"), InternalToken: os.Getenv("INTERNAL_TOKEN")}
 	log.Printf("inventory listening on %s", port)
 	if err := setupRouter(app).Run(":" + port); err != nil {
 		log.Fatal(err)

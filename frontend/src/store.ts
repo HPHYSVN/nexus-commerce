@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export interface User { id: string; email: string; fullName: string; role: 'CUSTOMER' | 'ADMIN' }
+export interface User { id: string; email: string; fullName: string; role: 'CUSTOMER' | 'ADMIN'; emailVerified?: boolean; provider?: string }
 
 interface AuthState {
   accessToken: string | null;

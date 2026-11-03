@@ -73,6 +73,8 @@ func migrate(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS order_items (id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE, product_id TEXT NOT NULL, product_name_snapshot TEXT NOT NULL DEFAULT '', unit_price_snapshot NUMERIC NOT NULL DEFAULT 0, quantity INT NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id, created_at DESC)`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS idempotency_key TEXT`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_user_idempotency ON orders(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -122,9 +124,9 @@ func main() {
 	app := &App{
 		DB:        openDB(os.Getenv("DATABASE_URL")),
 		JWTSecret: os.Getenv("JWT_SECRET"),
-		Inventory: NewInventoryClient(os.Getenv("INVENTORY_URL")),
+		Inventory: NewInventoryClient(os.Getenv("INVENTORY_URL"), os.Getenv("INTERNAL_TOKEN")),
 		Product:   NewProductClient(os.Getenv("PRODUCT_URL")),
-		Payment:   NewPaymentClient(os.Getenv("PAYMENT_URL")),
+		Payment:   NewPaymentClient(os.Getenv("PAYMENT_URL"), os.Getenv("INTERNAL_TOKEN")),
 		Events:    NewRabbitPublisher(os.Getenv("RABBITMQ_URL")),
 	}
 	log.Printf("order listening on %s", port)
