@@ -46,6 +46,14 @@ Needed changes: `User.provider/googleSubject/emailVerified`, `passwordHash` → 
 
 **Email verification & password reset: free to build, delivery is the caveat.** Token flow + SMTP sending via Spring Mail costs nothing to implement. Free sending options: Gmail SMTP with an app password (~500/day, demo-grade), Brevo free (300/day, sender verification without owning a domain), Resend free (3,000/mo but custom-domain sending needs a domain we can put DNS records on — the `sprites.app` subdomain is not ours to verify). Recommendation: sender abstraction + Gmail/Brevo SMTP now, swap to Resend/SES when a real domain exists. Verification policy: soft-gate (login allowed, checkout requires verified) so the demo never locks anyone out.
 
+## Progress
+
+- **Phase A — DONE** (internal service token, mandatory JWT exp, refunds, restock/order idempotency, fail-closed defaults, cart kept on payment failure).
+- **Phase B — DONE** (Google login live, email verification + password reset via SMTP abstraction in DEV-MAIL mode until credentials are provided, profile + change-password). Address book added.
+- **Phase C — DONE** (checkout delivery details + shipping methods/fees + coupons WELCOME10/SALE20, full order lifecycle with admin fulfilment, guest cart with login merge, wishlist, stock visibility on catalogue/detail, product reviews with rating summary).
+- **Phase D — PARTIAL**: supervisord auto-restart on Sprite (kill-tested), daily pg_dump backups (7-day rotation), deep DB health checks, gateway payload/rate limits, frontend Vitest+ESLint in CI, system suites in CI, CD job armed (needs `SPRITE_TOKEN` secret). Still open: formal DB migrations (auto-DDL remains, with column-default rules applied), transactional outbox/DLQ, metrics/tracing.
+- **Phase E — PARTIAL**: reviews/wishlist/coupons done; open: i18n, SEO/PWA polish, real PSP (Stripe/VNPay sandbox), SMTP credentials for real email delivery.
+
 ## Development plan (proposed order)
 
 | Phase | Scope | Gate |
