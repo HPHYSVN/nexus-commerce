@@ -68,7 +68,7 @@ func (a *App) AdminListOrders(c *gin.Context) {
 			writeError(c, 500, "INTERNAL", err.Error())
 			return
 		}
-		rows, err := a.DB.Query(`SELECT id, user_id, status, total_amount, created_at, updated_at FROM orders WHERE status=$1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`, status, size, (page-1)*size)
+		rows, err := a.DB.Query(`SELECT id, user_id, status, total_amount, COALESCE(subtotal,0), COALESCE(shipping_fee,0), COALESCE(discount_amount,0), COALESCE(coupon_code,''), COALESCE(recipient_name,''), COALESCE(phone,''), COALESCE(address_line,''), COALESCE(city,''), COALESCE(note,''), COALESCE(shipping_method,'STANDARD'), created_at, updated_at FROM orders WHERE status=$1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`, status, size, (page-1)*size)
 		if err != nil {
 			writeError(c, 500, "INTERNAL", err.Error())
 			return
@@ -85,7 +85,7 @@ func (a *App) AdminListOrders(c *gin.Context) {
 			writeError(c, 500, "INTERNAL", err.Error())
 			return
 		}
-		rows, err := a.DB.Query(`SELECT id, user_id, status, total_amount, created_at, updated_at FROM orders ORDER BY created_at DESC, id DESC LIMIT $1 OFFSET $2`, size, (page-1)*size)
+		rows, err := a.DB.Query(`SELECT id, user_id, status, total_amount, COALESCE(subtotal,0), COALESCE(shipping_fee,0), COALESCE(discount_amount,0), COALESCE(coupon_code,''), COALESCE(recipient_name,''), COALESCE(phone,''), COALESCE(address_line,''), COALESCE(city,''), COALESCE(note,''), COALESCE(shipping_method,'STANDARD'), created_at, updated_at FROM orders ORDER BY created_at DESC, id DESC LIMIT $1 OFFSET $2`, size, (page-1)*size)
 		if err != nil {
 			writeError(c, 500, "INTERNAL", err.Error())
 			return
@@ -113,7 +113,7 @@ func scanOrders(rows *sql.Rows) ([]Order, error) {
 	orders := []Order{}
 	for rows.Next() {
 		var o Order
-		if err := rows.Scan(&o.ID, &o.UserID, &o.Status, &o.TotalAmount, &o.CreatedAt, &o.UpdatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.UserID, &o.Status, &o.TotalAmount, &o.Subtotal, &o.ShippingFee, &o.DiscountAmount, &o.CouponCode, &o.Shipping.RecipientName, &o.Shipping.Phone, &o.Shipping.AddressLine, &o.Shipping.City, &o.Shipping.Note, &o.Shipping.Method, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, err
 		}
 		o.Items = []OrderItem{}

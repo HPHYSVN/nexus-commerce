@@ -103,6 +103,48 @@ export function ResetPasswordPage() {
   );
 }
 
+function AddressBook() {
+  const toast = useToast((s) => s.push);
+  const [form, setForm] = useState({ label: 'Home', recipientName: '', phone: '', addressLine: '', city: '', isDefault: false });
+  const [list, setList] = useState<Array<import('../api').Address>>([]);
+  const [loading, setLoading] = useState(true);
+  const load = () => { api.addresses().then(setList).catch(() => undefined).finally(() => setLoading(false)); };
+  useEffect(load, []);
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    try { await api.createAddress(form); toast('Address saved'); setForm({ label: 'Home', recipientName: '', phone: '', addressLine: '', city: '', isDefault: false }); load(); }
+    catch (err) { toast((err as Error).message, 'err'); }
+  }
+  async function del(id: string) {
+    try { await api.deleteAddress(id); toast('Address removed'); load(); } catch (err) { toast((err as Error).message, 'err'); }
+  }
+  return (
+    <section className="card p-6">
+      <h2 className="font-bold">Address book</h2>
+      {loading && <p className="mt-2 text-sm" role="status">Loading addresses…</p>}
+      <ul className="mt-3 space-y-2">
+        {list.map((a) => (
+          <li key={a.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-sand px-4 py-3 text-sm">
+            <span className="flex-1"><strong>{a.label || 'Address'}</strong>{a.isDefault ? ' · default' : ''}<br />{a.recipientName} — {a.addressLine}, {a.city} · {a.phone}</span>
+            <button className="btn-danger !px-3 !py-1 text-xs" onClick={() => del(a.id)}>Delete</button>
+          </li>
+        ))}
+        {!loading && list.length === 0 && <li className="text-sm text-inksoft">No saved addresses yet.</li>}
+      </ul>
+      <form onSubmit={add} className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div><label className="label" htmlFor="ab-label">Label</label><input id="ab-label" className="input" value={form.label} onChange={set('label')} /></div>
+        <div><label className="label" htmlFor="ab-name">Recipient</label><input id="ab-name" className="input" required value={form.recipientName} onChange={set('recipientName')} /></div>
+        <div><label className="label" htmlFor="ab-phone">Phone</label><input id="ab-phone" className="input" required value={form.phone} onChange={set('phone')} /></div>
+        <div><label className="label" htmlFor="ab-city">City</label><input id="ab-city" className="input" required value={form.city} onChange={set('city')} /></div>
+        <div className="sm:col-span-2"><label className="label" htmlFor="ab-addr">Address</label><input id="ab-addr" className="input" required value={form.addressLine} onChange={set('addressLine')} /></div>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isDefault} onChange={set('isDefault')} /> Set as default</label>
+        <button className="btn">Add address</button>
+      </form>
+    </section>
+  );
+}
+
 export function ProfilePage() {
   const { user, login, accessToken, refreshToken } = useAuth();
   const toast = useToast((s) => s.push);
@@ -141,6 +183,7 @@ export function ProfilePage() {
           <button className="btn mt-4" disabled={busy}>Save</button>
         </form>
       </section>
+      <AddressBook />
       <section className="card p-6">
         <h2 className="font-bold">Change password</h2>
         <form onSubmit={changePw} className="mt-3">

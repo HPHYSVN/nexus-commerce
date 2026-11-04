@@ -61,7 +61,7 @@ i=0
 for pid in $PIDS; do
   i=$((i+1))
   oid=$(curl -s -X POST $B/orders -H "Authorization: Bearer $BT" -H 'Content-Type: application/json' -H "Idempotency-Key: seed-order-$pid" \
-    -d "{\"items\":[{\"productId\":\"$pid\",\"productName\":\"seed\",\"unitPrice\":1,\"quantity\":1}],\"paymentToken\":\"tok_success\"}" | jqget "d.get('id','')" 2>/dev/null)
+    -d "{\"items\":[{\"productId\":\"$pid\",\"productName\":\"seed\",\"unitPrice\":1,\"quantity\":1}],\"shipping\":{\"recipientName\":\"Test Buyer\",\"phone\":\"0900000000\",\"addressLine\":\"1 Test Street\",\"city\":\"Hanoi\",\"method\":\"STANDARD\"},\"paymentToken\":\"tok_success\"}" | jqget "d.get('id','')" 2>/dev/null)
   [ -z "$oid" ] || [ "$oid" = "None" ] && continue
   case $((i % 3)) in
     0) curl -s -X PUT $B/admin/orders/$oid/status -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"status":"PROCESSING"}' > /dev/null

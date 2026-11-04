@@ -115,6 +115,55 @@ func TestValidateRestockAndShouldRestock(t *testing.T) {
 	}
 }
 
+func TestParseStockIDs(t *testing.T) {
+	if got := parseStockIDs("a,b, c ,,d"); len(got) != 4 || got[2] != "c" {
+		t.Fatalf("parse: %v", got)
+	}
+	if parseStockIDs("") != nil || len(parseStockIDs(" , ")) != 0 {
+		t.Fatal("empty ids should parse to none")
+	}
+	many := ""
+	for i := 0; i < 150; i++ {
+		many += "p,"
+	}
+	if got := parseStockIDs(many); len(got) != 100 {
+		t.Fatalf("cap 100: got %d", len(got))
+	}
+}
+
+func TestGetStockBatchEmptyIDsAndHealth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := setupRouter(&App{InternalToken: "s3cret"}) // registers /stock and /stock/:productId without conflict
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/stock", nil))
+	if w.Code != 400 || w.Body.String() == "" {
+		t.Fatalf("batch no ids: %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/stock?ids=", nil))
+	if w.Code != 400 {
+		t.Fatalf("batch empty ids: %d", w.Code)
+	}
+	// Param route still works (DB nil -> 500, not 404/route conflict)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/stock/p1", nil))
+	if w.Code != 500 {
+		t.Fatalf("single stock nil DB: %d %s", w.Code, w.Body.String())
+	}
+	// Batch with ids but nil DB -> 500
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/stock?ids=a,b", nil))
+	if w.Code != 500 {
+		t.Fatalf("batch nil DB: %d", w.Code)
+	}
+	// Deep health: nil DB -> 503
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if w.Code != 503 {
+		t.Fatalf("health nil DB: %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestSetupRouterInternalAuth(t *testing.T) {
 	r := setupRouter(&App{InternalToken: "s3cret"}) // DB nil: auth must run before 500
 	for _, path := range []string{"/internal/reservations", "/internal/reservations/o1/release", "/internal/reservations/o1/confirm", "/internal/restock"} {

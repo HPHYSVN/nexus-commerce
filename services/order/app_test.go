@@ -184,6 +184,115 @@ func TestAdminAuth(t *testing.T) {
 	}
 }
 
+func TestPricingShippingAndDiscount(t *testing.T) {
+	// Coupon math
+	if got := ComputeDiscount(100, 10); math.Abs(got-10) > 0.001 {
+		t.Fatalf("discount 10%% of 100 = %v", got)
+	}
+	if got := ComputeDiscount(33.33, 20); math.Abs(got-6.67) > 0.001 {
+		t.Fatalf("discount rounding = %v want 6.67", got)
+	}
+	// Free standard >=75 net, fee below, express flat
+	if f, err := ShippingFee("STANDARD", 75); err != nil || f != 0 {
+		t.Fatalf("free>=75: %v %v", f, err)
+	}
+	if f, _ := ShippingFee("STANDARD", 74.99); f != 4.99 {
+		t.Fatalf("standard fee = %v", f)
+	}
+	if f, _ := ShippingFee("EXPRESS", 1000); f != 12.99 {
+		t.Fatalf("express = %v", f)
+	}
+	if f, _ := ShippingFee("", 10); f != 4.99 { // empty defaults STANDARD
+		t.Fatalf("default method fee = %v", f)
+	}
+	if _, err := ShippingFee("OVERNIGHT", 10); err == nil {
+		t.Fatal("unknown method should fail")
+	}
+	// Combined: 100 -10% = 90 net => free standard, total 90
+	p, err := CalculatePricing(100, ComputeDiscount(100, 10), "STANDARD")
+	if err != nil || p.Total != 90 || p.ShippingFee != 0 || p.Discount != 10 || p.Subtotal != 100 {
+		t.Fatalf("pricing %+v err %v", p, err)
+	}
+	// 80 -20% = 64 net => 4.99 fee, total 68.99
+	p, _ = CalculatePricing(80, ComputeDiscount(80, 20), "STANDARD")
+	if math.Abs(p.Total-68.99) > 0.001 {
+		t.Fatalf("pricing total %v want 68.99", p.Total)
+	}
+	p, _ = CalculatePricing(50, 0, "EXPRESS")
+	if math.Abs(p.Total-62.99) > 0.001 {
+		t.Fatalf("express total %v want 62.99", p.Total)
+	}
+}
+
+func TestDiscountForCoupon(t *testing.T) {
+	if d, err := DiscountForCoupon(100, 10, true, true); err != nil || d != 10 {
+		t.Fatalf("valid coupon: %v %v", d, err)
+	}
+	for _, tc := range []struct {
+		percent       int
+		found, active bool
+	}{{10, false, true}, {10, true, false}, {0, true, true}} {
+		if _, err := DiscountForCoupon(100, tc.percent, tc.found, tc.active); err == nil {
+			t.Fatalf("coupon %+v should be invalid", tc)
+		}
+	}
+}
+
+func TestValidateShipping(t *testing.T) {
+	valid := ShippingInfo{RecipientName: "An", Phone: "090", AddressLine: "1 St", City: "HCMC", Method: "STANDARD"}
+	if err := ValidateShipping(valid); err != nil {
+		t.Fatalf("valid: %v", err)
+	}
+	cases := []struct {
+		s     ShippingInfo
+		field string
+	}{
+		{ShippingInfo{Phone: "090", AddressLine: "1", City: "X"}, "recipientName"},
+		{ShippingInfo{RecipientName: "A", AddressLine: "1", City: "X"}, "phone"},
+		{ShippingInfo{RecipientName: "A", Phone: "090", City: "X"}, "addressLine"},
+		{ShippingInfo{RecipientName: "A", Phone: "090", AddressLine: "1"}, "city"},
+	}
+	for _, tc := range cases {
+		err := ValidateShipping(tc.s)
+		if err == nil || !strings.Contains(err.Error(), tc.field) {
+			t.Fatalf("shipping %+v: err %v should name %s", tc.s, err, tc.field)
+		}
+	}
+}
+
+func TestHealthDeepDBNil(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := setupRouter(&App{})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if w.Code != 503 || !strings.Contains(w.Body.String(), `"status":"error"`) || !strings.Contains(w.Body.String(), `"service":"order"`) {
+		t.Fatalf("health nil DB: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateOrderMissingShippingValidation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	secret := "test-secret-at-least-32-chars-long!!"
+	r := setupRouter(&App{JWTSecret: secret}) // DB nil: validation precedes DB check
+	tok := SignJWT(Claims{Sub: "u1", Role: "USER", Exp: time.Now().Add(time.Hour).Unix()}, secret)
+	req := httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(`{"items":[{"productId":"p1","quantity":1}]}`))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "VALIDATION_ERROR") || !strings.Contains(w.Body.String(), "recipientName") {
+		t.Fatalf("missing shipping: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestOrderJSONFields(t *testing.T) {
+	b, _ := json.Marshal(Order{Subtotal: 100, ShippingFee: 4.99, DiscountAmount: 10, CouponCode: "WELCOME10", Shipping: ShippingInfo{RecipientName: "A", Phone: "090", AddressLine: "1", City: "X", Method: "STANDARD"}})
+	for _, k := range []string{`"subtotal"`, `"shippingFee"`, `"discountAmount"`, `"couponCode"`, `"shipping"`, `"recipientName"`, `"addressLine"`, `"method"`} {
+		if !strings.Contains(string(b), k) {
+			t.Fatalf("order JSON missing %s: %s", k, b)
+		}
+	}
+}
+
 // Clients must send X-Internal-Token on inventory/payment calls (not product lookup).
 func TestClientsSendInternalToken(t *testing.T) {
 	var seen []string

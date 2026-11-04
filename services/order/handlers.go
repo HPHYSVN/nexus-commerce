@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -24,14 +25,109 @@ type OrderItem struct {
 	Quantity    int     `json:"quantity"`
 }
 
+type ShippingInfo struct {
+	RecipientName string `json:"recipientName"`
+	Phone         string `json:"phone"`
+	AddressLine   string `json:"addressLine"`
+	City          string `json:"city"`
+	Note          string `json:"note"`
+	Method        string `json:"method"`
+}
+
 type Order struct {
-	ID          string      `json:"id"`
-	UserID      string      `json:"userId"`
-	Status      string      `json:"status"`
-	TotalAmount float64     `json:"totalAmount"`
-	Items       []OrderItem `json:"items,omitempty"`
-	CreatedAt   time.Time   `json:"createdAt,omitempty"`
-	UpdatedAt   time.Time   `json:"updatedAt,omitempty"`
+	ID             string       `json:"id"`
+	UserID         string       `json:"userId"`
+	Status         string       `json:"status"`
+	TotalAmount    float64      `json:"totalAmount"`
+	Subtotal       float64      `json:"subtotal"`
+	ShippingFee    float64      `json:"shippingFee"`
+	DiscountAmount float64      `json:"discountAmount"`
+	CouponCode     string       `json:"couponCode"`
+	Shipping       ShippingInfo `json:"shipping"`
+	Items          []OrderItem  `json:"items,omitempty"`
+	CreatedAt      time.Time    `json:"createdAt,omitempty"`
+	UpdatedAt      time.Time    `json:"updatedAt,omitempty"`
+}
+
+func round2(v float64) float64 { return math.Round(v*100) / 100 }
+
+// NormalizeShippingMethod defaults empty to STANDARD and upper-cases.
+func NormalizeShippingMethod(m string) string {
+	m = strings.ToUpper(strings.TrimSpace(m))
+	if m == "" {
+		return "STANDARD"
+	}
+	return m
+}
+
+// ValidateShipping requires recipientName/phone/addressLine/city, naming the field.
+func ValidateShipping(s ShippingInfo) error {
+	switch {
+	case strings.TrimSpace(s.RecipientName) == "":
+		return errors.New("recipientName is required")
+	case strings.TrimSpace(s.Phone) == "":
+		return errors.New("phone is required")
+	case strings.TrimSpace(s.AddressLine) == "":
+		return errors.New("addressLine is required")
+	case strings.TrimSpace(s.City) == "":
+		return errors.New("city is required")
+	}
+	if _, err := ShippingFee(s.Method, 0); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ComputeDiscount is coupon math: round2(subtotal * percent/100).
+func ComputeDiscount(subtotal float64, percent int) float64 {
+	return round2(subtotal * float64(percent) / 100)
+}
+
+var ErrInvalidCoupon = errors.New("invalid coupon")
+
+// DiscountForCoupon is the pure coupon-lookup decision: not found or
+// inactive (or a non-sane percent) is an invalid coupon.
+func DiscountForCoupon(subtotal float64, percent int, found, active bool) (float64, error) {
+	if !found || !active || percent <= 0 || percent > 100 {
+		return 0, ErrInvalidCoupon
+	}
+	return ComputeDiscount(subtotal, percent), nil
+}
+
+// ShippingFee: STANDARD free at net >= 75 else 4.99; EXPRESS flat 12.99.
+func ShippingFee(method string, net float64) (float64, error) {
+	switch NormalizeShippingMethod(method) {
+	case "STANDARD":
+		if net >= 75 {
+			return 0, nil
+		}
+		return 4.99, nil
+	case "EXPRESS":
+		return 12.99, nil
+	default:
+		return 0, errors.New("method is invalid: unknown shipping method")
+	}
+}
+
+type Pricing struct {
+	Subtotal    float64
+	Discount    float64
+	ShippingFee float64
+	Total       float64
+}
+
+// CalculatePricing combines discount + shipping fee into the final total.
+func CalculatePricing(goodsSubtotal, discount float64, method string) (Pricing, error) {
+	fee, err := ShippingFee(method, goodsSubtotal-discount)
+	if err != nil {
+		return Pricing{}, err
+	}
+	return Pricing{
+		Subtotal:    round2(goodsSubtotal),
+		Discount:    round2(discount),
+		ShippingFee: fee,
+		Total:       round2(goodsSubtotal - discount + fee),
+	}, nil
 }
 
 // CalculateTotal is a pure function: sum(unitPrice*quantity), rounded to cents.
@@ -90,7 +186,7 @@ func (a *App) updateStatus(id, status string) error {
 
 func (a *App) loadOrder(id string) (*Order, error) {
 	var o Order
-	err := a.DB.QueryRow(`SELECT id, user_id, status, total_amount, created_at, updated_at FROM orders WHERE id=$1`, id).Scan(&o.ID, &o.UserID, &o.Status, &o.TotalAmount, &o.CreatedAt, &o.UpdatedAt)
+	err := a.DB.QueryRow(`SELECT id, user_id, status, total_amount, COALESCE(subtotal,0), COALESCE(shipping_fee,0), COALESCE(discount_amount,0), COALESCE(coupon_code,''), COALESCE(recipient_name,''), COALESCE(phone,''), COALESCE(address_line,''), COALESCE(city,''), COALESCE(note,''), COALESCE(shipping_method,'STANDARD'), created_at, updated_at FROM orders WHERE id=$1`, id).Scan(&o.ID, &o.UserID, &o.Status, &o.TotalAmount, &o.Subtotal, &o.ShippingFee, &o.DiscountAmount, &o.CouponCode, &o.Shipping.RecipientName, &o.Shipping.Phone, &o.Shipping.AddressLine, &o.Shipping.City, &o.Shipping.Note, &o.Shipping.Method, &o.CreatedAt, &o.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -140,18 +236,31 @@ func (a *App) findOrderByIdempotency(userID, key string) (*Order, error) {
 }
 
 func (a *App) CreateOrder(c *gin.Context) {
-	if a.DB == nil {
-		writeError(c, 500, "INTERNAL", "database unavailable")
-		return
-	}
 	userID := c.GetString("userId")
 	var body struct {
 		Items          []OrderItemInput `json:"items"`
 		PaymentToken   string           `json:"paymentToken"`
 		IdempotencyKey string           `json:"idempotencyKey"`
+		Shipping       ShippingInfo     `json:"shipping"`
+		CouponCode     string           `json:"couponCode"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		writeError(c, 400, "VALIDATION_ERROR", "invalid JSON body")
+		return
+	}
+	// Pure validation before any DB/side effects.
+	if err := ValidateCreateOrder(body.Items); err != nil {
+		writeError(c, 400, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	if err := ValidateShipping(body.Shipping); err != nil {
+		writeError(c, 400, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	body.Shipping.Method = NormalizeShippingMethod(body.Shipping.Method)
+	body.CouponCode = strings.TrimSpace(body.CouponCode)
+	if a.DB == nil {
+		writeError(c, 500, "INTERNAL", "database unavailable")
 		return
 	}
 	idempotencyKey := resolveIdempotencyKey(c.GetHeader("Idempotency-Key"), body.IdempotencyKey)
@@ -164,10 +273,6 @@ func (a *App) CreateOrder(c *gin.Context) {
 			writeError(c, 500, "INTERNAL", err.Error())
 			return
 		}
-	}
-	if err := ValidateCreateOrder(body.Items); err != nil {
-		writeError(c, 400, "VALIDATION_ERROR", err.Error())
-		return
 	}
 	// Authoritative pricing: never trust client-sent names/prices (ADR: price hardening).
 	// The catalog name/price replace whatever the client sent and become the snapshot.
@@ -187,8 +292,32 @@ func (a *App) CreateOrder(c *gin.Context) {
 			body.Items[i].UnitPrice = price
 		}
 	}
-	total := CalculateTotal(body.Items)
-	o := Order{ID: newID(), UserID: userID, Status: "PENDING", TotalAmount: total, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	goodsSubtotal := CalculateTotal(body.Items)
+	// Coupon lookup (server-side only).
+	var discount float64
+	if body.CouponCode != "" {
+		var percent int
+		var active bool
+		err := a.DB.QueryRow(`SELECT percent, COALESCE(active,true) FROM coupons WHERE code=$1`, body.CouponCode).Scan(&percent, &active)
+		found := err == nil
+		if err != nil && err != sql.ErrNoRows {
+			writeError(c, 500, "INTERNAL", err.Error())
+			return
+		}
+		d, err := DiscountForCoupon(goodsSubtotal, percent, found, active)
+		if err != nil {
+			writeError(c, 400, "INVALID_COUPON", "invalid coupon: "+body.CouponCode)
+			return
+		}
+		discount = d
+	}
+	pricing, err := CalculatePricing(goodsSubtotal, discount, body.Shipping.Method)
+	if err != nil {
+		writeError(c, 400, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	total := pricing.Total
+	o := Order{ID: newID(), UserID: userID, Status: "PENDING", TotalAmount: pricing.Total, Subtotal: pricing.Subtotal, ShippingFee: pricing.ShippingFee, DiscountAmount: pricing.Discount, CouponCode: body.CouponCode, Shipping: body.Shipping, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	for _, it := range body.Items {
 		o.Items = append(o.Items, OrderItem(it))
 	}
@@ -202,7 +331,11 @@ func (a *App) CreateOrder(c *gin.Context) {
 	if idempotencyKey != "" {
 		keyArg = idempotencyKey
 	}
-	if _, err := tx.Exec(`INSERT INTO orders(id, user_id, status, total_amount, idempotency_key) VALUES($1,$2,'PENDING',$3,$4)`, o.ID, o.UserID, o.TotalAmount, keyArg); err != nil {
+	var couponArg interface{}
+	if o.CouponCode != "" {
+		couponArg = o.CouponCode
+	}
+	if _, err := tx.Exec(`INSERT INTO orders(id, user_id, status, total_amount, idempotency_key, recipient_name, phone, address_line, city, note, shipping_method, shipping_fee, subtotal, coupon_code, discount_amount) VALUES($1,$2,'PENDING',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, o.ID, o.UserID, o.TotalAmount, keyArg, o.Shipping.RecipientName, o.Shipping.Phone, o.Shipping.AddressLine, o.Shipping.City, o.Shipping.Note, o.Shipping.Method, o.ShippingFee, o.Subtotal, couponArg, o.DiscountAmount); err != nil {
 		tx.Rollback()
 		// Unique-violation race on (user_id, idempotency_key): return winner.
 		if idempotencyKey != "" {

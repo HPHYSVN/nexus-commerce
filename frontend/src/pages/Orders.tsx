@@ -50,7 +50,20 @@ export function OrderDetailPage() {
       <ul className="mt-6 space-y-2">
         {(o.items ?? []).map((i, idx) => <li key={idx} className="flex justify-between text-sm"><span>{i.productName} × {i.quantity}</span><span>{money(i.unitPrice * i.quantity)}</span></li>)}
       </ul>
-      <p className="mt-4 border-t pt-4 text-right">Total: <strong>{money(o.totalAmount)}</strong></p>
+      <dl className="mt-4 space-y-1 border-t border-line pt-4 text-sm">
+        {o.subtotal !== undefined && <div className="flex justify-between"><dt className="text-inksoft">Subtotal</dt><dd>{money(o.subtotal)}</dd></div>}
+        {!!o.discountAmount && <div className="flex justify-between text-pine"><dt>Discount{o.couponCode ? ` (${o.couponCode})` : ''}</dt><dd>−{money(o.discountAmount)}</dd></div>}
+        {o.shippingFee !== undefined && <div className="flex justify-between"><dt className="text-inksoft">Shipping</dt><dd>{o.shippingFee === 0 ? 'Free' : money(o.shippingFee)}</dd></div>}
+        <div className="flex justify-between pt-1 text-base"><dt className="font-bold">Total</dt><dd><strong>{money(o.totalAmount)}</strong></dd></div>
+      </dl>
+      {o.shipping && (
+        <div className="mt-5 rounded-lg bg-sand p-4 text-sm">
+          <p className="font-bold">Delivery</p>
+          <p className="mt-1">{o.shipping.recipientName} · {o.shipping.phone}</p>
+          <p>{o.shipping.addressLine}, {o.shipping.city}</p>
+          <p className="text-inksoft">{o.shipping.method} shipping{o.shipping.note ? ` · Note: ${o.shipping.note}` : ''}</p>
+        </div>
+      )}
       {['PENDING', 'CONFIRMED'].includes(o.status) && <button className="btn-danger mt-6" disabled={cancel.isPending} onClick={() => cancel.mutate()}>Cancel order</button>}
     </div>
   );

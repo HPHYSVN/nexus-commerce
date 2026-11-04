@@ -21,6 +21,7 @@ const PUBLIC: Array<[string, RegExp]> = [
   ['POST', /^\/api\/auth\/(register|login|refresh|google|verify-email|forgot-password|reset-password)$/],
   ['GET', /^\/api\/products(\/.*)?$/],
   ['GET', /^\/api\/categories$/],
+  ['GET', /^\/api\/inventory(\/.*)?$/],
 ];
 
 function isPublic(method: string, url: string) {
@@ -36,7 +37,8 @@ function authGuard(req: any, res: any, next: () => void) {
     const claims = verifyToken(header.slice(7), SECRET);
     req.user = claims;
     const adminWrite =
-      (/^\/api\/products/.test(req.path) && ['POST', 'PUT', 'DELETE'].includes(req.method)) ||
+      ((req.path === '/api/products' || req.path === '/api/products/') && req.method === 'POST') ||
+      (/^\/api\/products/.test(req.path) && ['PUT', 'DELETE'].includes(req.method)) ||
       (/^\/api\/inventory/.test(req.path) && req.method === 'PUT') ||
       /^\/api\/admin/.test(req.path);
     if (adminWrite && claims.role !== 'ADMIN') return err(res, 403, 'FORBIDDEN', 'Admin role required');

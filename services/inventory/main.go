@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -104,9 +105,24 @@ func (a *App) requireAdmin(c *gin.Context) {
 	c.Next()
 }
 
+func (a *App) health(c *gin.Context) {
+	if a.DB == nil {
+		c.JSON(503, gin.H{"status": "error", "service": "inventory"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	defer cancel()
+	if err := a.DB.PingContext(ctx); err != nil {
+		c.JSON(503, gin.H{"status": "error", "service": "inventory"})
+		return
+	}
+	c.JSON(200, gin.H{"status": "ok", "service": "inventory"})
+}
+
 func setupRouter(app *App) *gin.Engine {
 	r := gin.Default()
-	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok", "service": "inventory"}) })
+	r.GET("/health", app.health)
+	r.GET("/stock", app.GetStockBatch)
 	r.GET("/stock/:productId", app.GetStock)
 	r.PUT("/stock/:productId", app.requireAdmin, app.PutStock)
 	r.POST("/internal/reservations", app.requireInternal, app.CreateReservation)

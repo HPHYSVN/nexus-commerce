@@ -2,7 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,6 +30,64 @@ type stockResp struct {
 	Quantity  int    `json:"quantity"`
 	Reserved  int    `json:"reserved"`
 	Available int    `json:"available"`
+}
+
+// parseStockIDs splits a comma list, trims/drops blanks, caps at 100.
+func parseStockIDs(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	ids := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			ids = append(ids, p)
+		}
+		if len(ids) >= 100 {
+			break
+		}
+	}
+	return ids
+}
+
+// GetStockBatch handles GET /stock?ids=a,b,c — public read, existing rows only.
+func (a *App) GetStockBatch(c *gin.Context) {
+	ids := parseStockIDs(c.Query("ids"))
+	if len(ids) == 0 {
+		writeError(c, 400, "VALIDATION_ERROR", "ids is required")
+		return
+	}
+	if a.DB == nil {
+		writeError(c, 500, "INTERNAL", "database unavailable")
+		return
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	rows, err := a.DB.Query(`SELECT product_id, quantity, reserved FROM stock_items WHERE product_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		writeError(c, 500, "INTERNAL", err.Error())
+		return
+	}
+	defer rows.Close()
+	result := []stockResp{}
+	for rows.Next() {
+		var s stockResp
+		if err := rows.Scan(&s.ProductID, &s.Quantity, &s.Reserved); err != nil {
+			writeError(c, 500, "INTERNAL", err.Error())
+			return
+		}
+		s.Available = Available(s.Quantity, s.Reserved)
+		result = append(result, s)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(c, 500, "INTERNAL", err.Error())
+		return
+	}
+	c.JSON(200, result)
 }
 
 func (a *App) GetStock(c *gin.Context) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -75,6 +76,18 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id, created_at DESC)`,
 		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS idempotency_key TEXT`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_user_idempotency ON orders(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_name TEXT`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS phone TEXT`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS address_line TEXT`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS city TEXT`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS note TEXT`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_method TEXT DEFAULT 'STANDARD'`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_fee NUMERIC DEFAULT 0`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal NUMERIC DEFAULT 0`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code TEXT`,
+		`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC DEFAULT 0`,
+		`CREATE TABLE IF NOT EXISTS coupons (code TEXT PRIMARY KEY, percent INT NOT NULL, active BOOLEAN DEFAULT true)`,
+		`INSERT INTO coupons(code, percent, active) VALUES('WELCOME10', 10, true), ('SALE20', 20, true) ON CONFLICT (code) DO NOTHING`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -108,9 +121,23 @@ func (a *App) requireAuth(c *gin.Context) {
 	c.Next()
 }
 
+func (a *App) health(c *gin.Context) {
+	if a.DB == nil {
+		c.JSON(503, gin.H{"status": "error", "service": "order"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	defer cancel()
+	if err := a.DB.PingContext(ctx); err != nil {
+		c.JSON(503, gin.H{"status": "error", "service": "order"})
+		return
+	}
+	c.JSON(200, gin.H{"status": "ok", "service": "order"})
+}
+
 func setupRouter(app *App) *gin.Engine {
 	r := gin.Default()
-	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok", "service": "order"}) })
+	r.GET("/health", app.health)
 	g := r.Group("/orders", app.requireAuth)
 	g.POST("", app.CreateOrder)
 	g.GET("", app.ListOrders)

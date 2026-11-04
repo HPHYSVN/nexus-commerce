@@ -33,7 +33,7 @@ echo "== cart add 2 =="
 curl -s -X POST $B/cart/items -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "{\"productId\":\"$PID\",\"productName\":\"$PNAME\",\"unitPrice\":$PRICE,\"quantity\":2}"; echo
 
 echo "== checkout success =="
-ORDER=$(curl -s -X POST $B/orders -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "{\"items\":[{\"productId\":\"$PID\",\"productName\":\"$PNAME\",\"unitPrice\":$PRICE,\"quantity\":2}],\"paymentToken\":\"tok_success\"}")
+ORDER=$(curl -s -X POST $B/orders -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "{\"items\":[{\"productId\":\"$PID\",\"productName\":\"$PNAME\",\"unitPrice\":$PRICE,\"quantity\":2}],\"shipping\":{\"recipientName\":\"Test Buyer\",\"phone\":\"0900000000\",\"addressLine\":\"1 Test Street\",\"city\":\"Hanoi\",\"method\":\"STANDARD\"},\"paymentToken\":\"tok_success\"}")
 echo "$ORDER"
 STATUS=$(echo "$ORDER" | JQ "d['status']")
 [ "$STATUS" = "CONFIRMED" ] || fail "expected CONFIRMED got $STATUS"
@@ -41,7 +41,7 @@ echo "== stock after success (expect quantity 8) =="
 curl -s $B/inventory/$PID -H "Authorization: Bearer $TOKEN"; echo
 
 echo "== checkout payment failure (stock must stay 8) =="
-ORDER2=$(curl -s -X POST $B/orders -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "{\"items\":[{\"productId\":\"$PID\",\"productName\":\"$PNAME\",\"unitPrice\":$PRICE,\"quantity\":1}],\"paymentToken\":\"tok_fail\"}")
+ORDER2=$(curl -s -X POST $B/orders -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "{\"items\":[{\"productId\":\"$PID\",\"productName\":\"$PNAME\",\"unitPrice\":$PRICE,\"quantity\":1}],\"shipping\":{\"recipientName\":\"Test Buyer\",\"phone\":\"0900000000\",\"addressLine\":\"1 Test Street\",\"city\":\"Hanoi\",\"method\":\"STANDARD\"},\"paymentToken\":\"tok_fail\"}")
 echo "$ORDER2"
 STATUS2=$(echo "$ORDER2" | JQ "d['status']")
 [ "$STATUS2" = "PAYMENT_FAILED" ] || fail "expected PAYMENT_FAILED got $STATUS2"

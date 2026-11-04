@@ -16,7 +16,7 @@ echo "stock set to 5 for $PID; firing 10 parallel orders..."
 
 for i in $(seq 1 10); do
   ( code=$(curl -s -o "$TMP/$i.json" -w '%{http_code}' -X POST $B/orders -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-      -d "{\"items\":[{\"productId\":\"$PID\",\"productName\":\"Conc Item\",\"unitPrice\":1,\"quantity\":1}],\"paymentToken\":\"tok_success\"}")
+      -d "{\"items\":[{\"productId\":\"$PID\",\"productName\":\"Conc Item\",\"unitPrice\":1,\"quantity\":1}],\"shipping\":{\"recipientName\":\"Test Buyer\",\"phone\":\"0900000000\",\"addressLine\":\"1 Test Street\",\"city\":\"Hanoi\",\"method\":\"STANDARD\"},\"paymentToken\":\"tok_success\"}")
     echo "$code" > "$TMP/$i.code" ) &
 done
 wait

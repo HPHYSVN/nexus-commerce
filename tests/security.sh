@@ -36,7 +36,7 @@ check "customer create product -> 403" 403 "$(code -X POST $B/products -H "Autho
 # 4. IDOR: user B cannot read user A's order (create one as A first via admin stock + checkout)
 ADMIN=$(curl -s -X POST $B/auth/login -H 'Content-Type: application/json' -d "{\"email\":\"${ADMIN_EMAIL:-admin@nexus.local}\",\"password\":\"${ADMIN_PASSWORD:-Admin123!}\"}" | python3 -c "import sys,json;print(json.load(sys.stdin)['accessToken'])")
 curl -s -X PUT $B/inventory/$PID -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"quantity":3}' > /dev/null
-OID=$(curl -s -X POST $B/orders -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "{\"items\":[{\"productId\":\"$PID\",\"productName\":\"X\",\"unitPrice\":1,\"quantity\":1}],\"paymentToken\":\"tok_success\"}" | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+OID=$(curl -s -X POST $B/orders -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "{\"items\":[{\"productId\":\"$PID\",\"productName\":\"X\",\"unitPrice\":1,\"quantity\":1}],\"shipping\":{\"recipientName\":\"Test Buyer\",\"phone\":\"0900000000\",\"addressLine\":\"1 Test Street\",\"city\":\"Hanoi\",\"method\":\"STANDARD\"},\"paymentToken\":\"tok_success\"}" | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
 EMAIL2="sec2-$RANDOM@test.local"
 curl -s -X POST $B/auth/register -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL2\",\"password\":\"secret123\",\"fullName\":\"Sec2\"}" > /dev/null
 TOKEN2=$(curl -s -X POST $B/auth/login -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL2\",\"password\":\"secret123\"}" | python3 -c "import sys,json;print(json.load(sys.stdin)['accessToken'])")

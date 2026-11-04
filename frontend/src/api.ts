@@ -1,11 +1,16 @@
 import { useAuth } from './store';
 
-export interface Product { id: string; name: string; slug: string; description: string; price: number; image_url: string; category: string | null }
+export interface Product { id: string; name: string; slug: string; description: string; price: number; image_url: string; category: string | null; ratingAverage?: number; rating_average?: number; ratingCount?: number; rating_count?: number }
+export interface Stock { productId: string; quantity: number; reserved: number; available: number }
+export interface Review { id: string; productId: string; userId: string; userName: string; rating: number; comment: string; createdAt: string }
+export interface Address { id: string; label?: string; recipientName: string; phone: string; addressLine: string; city: string; isDefault: boolean }
+export const ratingOf = (p: Product) => ({ avg: p.ratingAverage ?? p.rating_average ?? 0, count: p.ratingCount ?? p.rating_count ?? 0 });
 export interface Category { id: string; name: string; slug: string }
 export interface CartItem { productId: string; productName: string; unitPrice: number; quantity: number }
 export interface Cart { userId: string; items: CartItem[]; subtotal: number }
 export interface OrderItem { productId: string; productName: string; unitPrice: number; quantity: number }
-export interface Order { id: string; userId: string; status: string; totalAmount: number; items: OrderItem[]; createdAt: string }
+export interface ShippingInfo { recipientName: string; phone: string; addressLine: string; city: string; note?: string; method: string }
+export interface Order { id: string; userId: string; status: string; totalAmount: number; subtotal?: number; shippingFee?: number; discountAmount?: number; couponCode?: string; shipping?: ShippingInfo; items: OrderItem[]; createdAt: string }
 export interface AppNotification { id: string; eventType: string; message: string; status: string; createdAt: string }
 export interface AdminStats { totalOrders: number; totalRevenue: number; ordersByStatus: Record<string, number>; revenueByDay: Array<{ date: string; revenue: number; orders: number }> }
 
@@ -88,6 +93,13 @@ export const api = {
   adminOrders: (status = '') => request<Order[]>(`/api/admin/orders?size=100${status ? `&status=${status}` : ''}`),
   adminStats: () => request<AdminStats>('/api/admin/stats'),
   setOrderStatus: (id: string, status: string) => request<Order>(`/api/admin/orders/${id}/status`, j('PUT', { status })),
+  stockBatch: (ids: string[]) => (ids.length ? request<Stock[]>(`/api/inventory?ids=${ids.join(',')}`) : Promise.resolve([] as Stock[])),
+  reviews: (productId: string) => request<{ items: Review[]; average: number; count: number }>(`/api/products/${productId}/reviews`),
+  createReview: (productId: string, b: object) => request<Review>(`/api/products/${productId}/reviews`, j('POST', b)),
+  addresses: () => request<Address[]>('/api/auth/addresses'),
+  createAddress: (b: object) => request<Address>('/api/auth/addresses', j('POST', b)),
+  updateAddress: (id: string, b: object) => request<Address>(`/api/auth/addresses/${id}`, j('PUT', b)),
+  deleteAddress: (id: string) => request<unknown>(`/api/auth/addresses/${id}`, j('DELETE')),
   getStock: (id: string) => request<any>(`/api/inventory/${id}`),
   setStock: (id: string, quantity: number) => request<any>(`/api/inventory/${id}`, j('PUT', { quantity })),
 };

@@ -1,8 +1,10 @@
 import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
-import { useAuth, useToast } from './store';
-import { HomePage, ProductDetailPage } from './pages/Catalog';
+import { useAuth, useGuestCart, useToast, useWishlist } from './store';
+import { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { HomePage, ProductDetailPage, WishlistPage } from './pages/Catalog';
 import { LoginPage, RegisterPage } from './pages/Auth';
 import { CartPage, CheckoutPage } from './pages/CartCheckout';
 import { OrderDetailPage, OrdersPage } from './pages/Orders';
@@ -20,8 +22,24 @@ function RequireAuth({ children, admin = false }: { children: ReactNode; admin?:
 function Header() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const toast = useToast((s) => s.push);
+  const guest = useGuestCart();
+  const wishCount = useWishlist((s) => s.ids.length);
   const cart = useQuery({ queryKey: ['cart'], queryFn: api.cart, enabled: !!user });
-  const count = cart.data?.items.reduce((a, i) => a + i.quantity, 0) ?? 0;
+  const count = user ? (cart.data?.items.reduce((a, i) => a + i.quantity, 0) ?? 0) : guest.items.reduce((a, i) => a + i.quantity, 0);
+
+  // Merge the guest cart into the account cart once, on login.
+  useEffect(() => {
+    if (!user || guest.items.length === 0) return;
+    const items = [...guest.items];
+    guest.clear();
+    (async () => {
+      for (const i of items) await api.addToCart({ productId: i.productId, productName: i.productName, unitPrice: i.unitPrice, quantity: i.quantity }).catch(() => undefined);
+      qc.invalidateQueries({ queryKey: ['cart'] });
+      toast('Your guest cart was added to your account');
+    })();
+  }, [user?.id]);
   return (
     <>
     <div className="bg-pine text-center text-xs font-semibold tracking-wide text-white">
@@ -31,7 +49,8 @@ function Header() {
       <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3">
         <Link to="/" className="font-display text-2xl font-semibold tracking-tight">Nexus<span className="text-pine">.</span></Link>
         <Link to="/" className="text-sm hover:underline">Products</Link>
-        {user && <Link to="/cart" className="text-sm hover:underline">Cart{count > 0 ? ` (${count})` : ''}</Link>}
+        <Link to="/cart" className="text-sm hover:underline">Cart{count > 0 ? ` (${count})` : ''}</Link>
+        <Link to="/wishlist" className="text-sm hover:underline">Wishlist{wishCount > 0 ? ` (${wishCount})` : ''}</Link>
         {user && <Link to="/orders" className="text-sm hover:underline">Orders</Link>}
         {user?.role === 'ADMIN' && <Link to="/admin" className="text-sm font-medium hover:underline">Admin</Link>}
         <div className="ml-auto flex items-center gap-3 text-sm">
@@ -74,7 +93,8 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
-          <Route path="/cart" element={<RequireAuth><CartPage /></RequireAuth>} />
+          <Route path="/cart" element={<CartPage />} />
+          <Route path="/wishlist" element={<WishlistPage />} />
           <Route path="/checkout" element={<RequireAuth><CheckoutPage /></RequireAuth>} />
           <Route path="/orders" element={<RequireAuth><OrdersPage /></RequireAuth>} />
           <Route path="/orders/:id" element={<RequireAuth><OrderDetailPage /></RequireAuth>} />

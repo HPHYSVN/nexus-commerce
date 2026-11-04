@@ -1,6 +1,7 @@
 import os
 import re
 from contextlib import asynccontextmanager
+from datetime import datetime
 from decimal import Decimal
 import jwt
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Response
@@ -9,9 +10,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from .db import Base, engine, get_db
-from .models import Category, Product
+from .models import Category, Product, Review
 
 SEED = [
     ("Electronics", "electronics", "Wireless Headphones", "wireless-headphones", "Noise-cancelling over-ear headphones", "79.99", "https://picsum.photos/seed/headphones/600/400"),
@@ -75,6 +76,20 @@ def require_admin(request: Request) -> dict:
     return payload
 
 
+def require_user(request: Request) -> dict:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or not auth[7:].strip():
+        raise HTTPException(status_code=401, detail=_err("UNAUTHORIZED", "Missing bearer token"))
+    secret = os.getenv("JWT_SECRET", "")
+    try:
+        payload = jwt.decode(auth[7:].strip(), secret, algorithms=["HS256"])
+    except Exception:
+        raise HTTPException(status_code=401, detail=_err("UNAUTHORIZED", "Invalid or expired token"))
+    if not payload.get("sub"):
+        raise HTTPException(status_code=401, detail=_err("UNAUTHORIZED", "Token missing sub"))
+    return payload
+
+
 def _slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "product"
@@ -83,14 +98,32 @@ def _slugify(value: str) -> str:
 class ProductOut(BaseModel):
     id: str; name: str; slug: str; description: str; price: float
     image_url: str; category: str | None = None
+    ratingAverage: float = 0.0; ratingCount: int = 0
 
-def to_out(p: Product) -> ProductOut:
+def _ratings(db: Session, product_ids: list[str]) -> dict[str, tuple[float, int]]:
+    if not product_ids:
+        return {}
+    rows = db.execute(
+        select(Review.product_id, func.avg(Review.rating), func.count(Review.id))
+        .where(Review.product_id.in_(product_ids))
+        .group_by(Review.product_id)).all()
+    return {pid: (round(float(avg or 0), 1), int(count)) for pid, avg, count in rows}
+
+def to_out(p: Product, rating: tuple[float, int] = (0.0, 0)) -> ProductOut:
     return ProductOut(id=p.id, name=p.name, slug=p.slug, description=p.description,
                       price=float(p.price), image_url=p.image_url,
-                      category=p.category.name if p.category else None)
+                      category=p.category.name if p.category else None,
+                      ratingAverage=rating[0], ratingCount=rating[1])
+
+def _to_out_with_rating(db: Session, p: Product) -> ProductOut:
+    return to_out(p, _ratings(db, [p.id]).get(p.id, (0.0, 0)))
 
 @app.get("/health")
-def health():
+def health(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "error", "service": "product"})
     return {"status": "ok", "service": "product"}
 
 @app.get("/products", response_model=list[ProductOut])
@@ -100,14 +133,89 @@ def list_products(db: Session = Depends(get_db), q: str | None = Query(default=N
     if q:
         stmt = stmt.where(Product.name.ilike(f"%{q}%"))
     rows = db.scalars(stmt.order_by(Product.created_at).offset((page - 1) * size).limit(size)).all()
-    return [to_out(p) for p in rows]
+    ratings = _ratings(db, [p.id for p in rows])
+    return [to_out(p, ratings.get(p.id, (0.0, 0))) for p in rows]
 
 @app.get("/products/{product_id}", response_model=ProductOut)
 def get_product(product_id: str, db: Session = Depends(get_db)):
     p = db.get(Product, product_id)
     if not p or not p.is_active:
         raise HTTPException(status_code=404, detail={"error": {"code": "PRODUCT_NOT_FOUND", "message": "Product not found"}})
-    return to_out(p)
+    return _to_out_with_rating(db, p)
+
+
+class ReviewCreate(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def _strip_comment(cls, v):
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                raise ValueError("must not be empty")
+        return v
+
+
+class ReviewOut(BaseModel):
+    id: str
+    productId: str
+    userId: str
+    userName: str
+    rating: int
+    comment: str
+    createdAt: datetime | None = None
+
+
+class ReviewListOut(BaseModel):
+    items: list[ReviewOut]
+    average: float = 0.0
+    count: int = 0
+
+
+def _review_out(r: Review) -> ReviewOut:
+    return ReviewOut(id=r.id, productId=r.product_id, userId=r.user_id,
+                     userName=r.user_name, rating=r.rating, comment=r.comment,
+                     createdAt=r.created_at)
+
+
+def _active_product(db: Session, product_id: str) -> Product:
+    p = db.get(Product, product_id)
+    if not p or not p.is_active:
+        raise HTTPException(status_code=404, detail=_err("PRODUCT_NOT_FOUND", "Product not found"))
+    return p
+
+
+@app.post("/products/{product_id}/reviews", response_model=ReviewOut, status_code=201)
+def create_review(product_id: str, body: ReviewCreate, db: Session = Depends(get_db),
+                  user: dict = Depends(require_user)):
+    _active_product(db, product_id)
+    user_id = str(user["sub"])
+    existing = db.scalar(select(Review).where(Review.product_id == product_id,
+                                              Review.user_id == user_id))
+    if existing:
+        raise HTTPException(status_code=409, detail=_err("DUPLICATE_REVIEW", "User has already reviewed this product"))
+    review = Review(product_id=product_id, user_id=user_id,
+                    user_name=str(user.get("email") or user.get("name") or "Customer"),
+                    rating=body.rating, comment=body.comment)
+    db.add(review)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=_err("DUPLICATE_REVIEW", "User has already reviewed this product"))
+    db.refresh(review)
+    return _review_out(review)
+
+
+@app.get("/products/{product_id}/reviews", response_model=ReviewListOut)
+def list_reviews(product_id: str, db: Session = Depends(get_db)):
+    _active_product(db, product_id)
+    rows = db.scalars(select(Review).where(Review.product_id == product_id)
+                      .order_by(Review.created_at.desc())).all()
+    average = round(sum(r.rating for r in rows) / len(rows), 1) if rows else 0.0
+    return ReviewListOut(items=[_review_out(r) for r in rows], average=float(average), count=len(rows))
 
 
 class ProductCreate(BaseModel):
@@ -199,7 +307,7 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db), _: dict =
         db.rollback()
         raise HTTPException(status_code=409, detail=_err("DUPLICATE_SLUG", "Product slug already exists"))
     db.refresh(p)
-    return to_out(p)
+    return _to_out_with_rating(db, p)
 
 
 @app.put("/products/{product_id}", response_model=ProductOut)
@@ -227,7 +335,7 @@ def update_product(product_id: str, body: ProductUpdate, db: Session = Depends(g
         db.rollback()
         raise HTTPException(status_code=409, detail=_err("DUPLICATE_SLUG", "Product slug already exists"))
     db.refresh(p)
-    return to_out(p)
+    return _to_out_with_rating(db, p)
 
 
 @app.delete("/products/{product_id}", status_code=204)
